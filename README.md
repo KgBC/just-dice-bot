@@ -14,11 +14,13 @@ INSTALL
 It's tested on python 2.7 on linux. 
 I installed these:
 
+```
 aptitude install firefox xvfb xterm xserver-xephyr
 xhost +
 pip install selenium
 pip install PyVirtualDisplay
 pip install EasyProcess
+```
 
 Please tell me if something is missing.
 
@@ -27,6 +29,7 @@ CONFIG
 
 is done in the .py file itself. Just edit some vars:
 
+```
 # if you want to see what is happening set to 1:
 self.visible = 0
 
@@ -39,6 +42,7 @@ self.chance=49.5
 
 # multiply by what on lose:
 self.multiplier = 2.0
+```
 
 RUN
 -------------
