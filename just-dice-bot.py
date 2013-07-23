@@ -1,23 +1,41 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+"""
+Simple martingale bot for just-dice.com
+Copyright (C) 2013 KgBC <>
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+"""
+
 from pyvirtualdisplay import Display
 from easyprocess import EasyProcess
-
-from selenium import webdriver
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import NoSuchElementException
-import time, re
+
+import time, re, math
 
 class JustDiceBet():
     def __init__(self):
         #to debug we want a nicer output:
         #self.visible = 1
         self.visible = 0
-        self.lose_rounds = 13 # about 0.1 %
+        self.lose_rounds = 25
         self.chance=49.5
         self.multiplier = 2.0
         
@@ -36,14 +54,18 @@ class JustDiceBet():
                 #bet=start_bet
                 bet = self.get_max_bet()
             else:
-                #lose, verdoppeln
+                #lose, multiply
                 bet=bet*self.multiplier
         #all bets done (with 'while True' this will never happen)
         self.tearDown()
         
     def get_max_bet(self):
         #we want to lose after X rounds:
-        bet = round(self.balance*pow(2,-self.lose_rounds), 8)
+        r = float(self.lose_rounds)
+        b = float(self.balance)
+        bet = math.floor( 
+                     ( b*pow(2,-r) )*1e+08
+                 )*1e-08
         if bet < 1e-08:
             bet = 1e-08
         return bet
