@@ -22,6 +22,11 @@ pip install PyVirtualDisplay
 pip install EasyProcess
 ```
 
+On windows, install Python 2.7, Tor Browser and Selenium. That should do it.
+Python:		http://www.python.org/download/
+Tor Bundle: https://www.torproject.org/projects/torbrowser.html.en
+Selenium: 	http://docs.seleniumhq.org/download/
+
 Please tell me if something is missing.
 
 CONFIG

@@ -20,8 +20,11 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 """
 
-from pyvirtualdisplay import Display
-from easyprocess import EasyProcess
+import os
+
+if os.name != 'nt':
+    from pyvirtualdisplay import Display
+    from easyprocess import EasyProcess
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -45,17 +48,20 @@ class JustDiceBet():
         #start betting
         bet = self.get_max_bet()
         while True: #for bet_count in range(100):
-            #bet
-            saldo = self.do_bet(chance=self.chance, bet=bet)
-            print "%s = %s" % ("%+.8f" % saldo, 
-                               "%0.8f" % self.balance)
-            if saldo > 0.0:
-                #win
-                #bet=start_bet
-                bet = self.get_max_bet()
-            else:
-                #lose, multiply
-                bet=bet*self.multiplier
+            try:
+                #bet
+                saldo = self.do_bet(chance=self.chance, bet=bet)
+                print "%s = %s" % ("%+.8f" % saldo, 
+                                   "%0.8f" % self.balance)
+                if saldo > 0.0:
+                    #win
+                    #bet=start_bet
+                    bet = self.get_max_bet()
+                else:
+                    #lose, multiply
+                    bet=bet*self.multiplier
+            except KeyboardInterrupt:
+                break
         #all bets done (with 'while True' this will never happen)
         self.tearDown()
         
@@ -71,13 +77,14 @@ class JustDiceBet():
         return bet
         
     def setUp(self):
-        self.display = Display(visible=self.visible,
-                          size=(1024, 768))
-        self.display.start()
-        
-        if self.visible:
-            #window manager for resizable windows
-            EasyProcess('fvwm').start()
+        if os.name != 'nt':
+            self.display = Display(visible=self.visible,
+                              size=(1024, 768))
+            self.display.start()
+            
+            if self.visible:
+                #window manager for resizable windows
+                EasyProcess('fvwm').start()
         
         self.driver = webdriver.Firefox()
         self.driver.implicitly_wait(30)
@@ -141,7 +148,8 @@ class JustDiceBet():
     def tearDown(self):
         self.driver.quit()
         
-        self.display.stop()
+        if os.name != 'nt':
+            self.display.stop()
 
 if __name__ == "__main__":
     JustDiceBet()
