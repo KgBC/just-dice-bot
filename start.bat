@@ -1,0 +1,1 @@
+cmd /k c:\python27\python just-dice-bot.py
