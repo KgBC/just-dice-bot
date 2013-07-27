@@ -30,19 +30,28 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import NoSuchElementException
-
 import time, re, math
+
+from config import jdb_config #this is your config
 
 class JustDiceBet():
     def __init__(self):
+        self.user = jdb_config["user"]
+        self.password = jdb_config["pass"]
         #to debug we want a nicer output:
-        #self.visible = 1
-        self.visible = 0
-        self.lose_rounds = 25
-        self.chance=49.5
-        self.multiplier = 2.0
+        self.visible = jdb_config["visible"]
+        self.lose_rounds = jdb_config["lose_rounds"]
+        self.chance = jdb_config["chance"]
+        self.multiplier = jdb_config["multiplier"]
         
-        self.balance = 0.0        
+        #internal vars
+        self.balance = 0.0
+        self.total = 0.0
+        self.max_lose = 0.0
+        self.most_rows_lost = 0
+        lost_sum = 0.0
+        lost_rows = 0
+        
         self.setUp()
         self.do_login()
         #start betting
@@ -51,15 +60,37 @@ class JustDiceBet():
             try:
                 #bet
                 saldo = self.do_bet(chance=self.chance, bet=bet)
-                print "%s = %s" % ("%+.8f" % saldo, 
-                                   "%0.8f" % self.balance)
                 if saldo > 0.0:
                     #win
                     #bet=start_bet
                     bet = self.get_max_bet()
+                    
+                    #stats about losing
+                    lost_sum = 0.0
+                    lost_rows = 0
                 else:
-                    #lose, multiply
+                    #lose
+                    lost_sum += saldo
+                    lost_rows += 1
+                    #multiply
                     bet=bet*self.multiplier
+                    
+                #win:
+                self.total += saldo
+                #warnings:
+                warn = ''
+                if lost_sum < self.max_lose:   #numbers are negative
+                    self.max_lose = lost_sum
+                    warn += ', max lost: %s' % ("%+.8f" % self.max_lose,)
+                if lost_rows > self.most_rows_lost:
+                    self.most_rows_lost = lost_rows
+                    warn += ', max rows: %s' % (self.most_rows_lost,)
+                
+                print "%s = %s: %s won%s" % ("%+.8f" % saldo, 
+                                   "%0.8f" % self.balance,
+                                   "%+.8f" % self.total,
+                                   warn)
+                
             except KeyboardInterrupt:
                 break
         #all bets done (with 'while True' this will never happen)
@@ -104,9 +135,9 @@ class JustDiceBet():
         # login
         self.driver.find_element_by_link_text("Account").click()
         self.driver.find_element_by_id("myuser").clear()
-        self.driver.find_element_by_id("myuser").send_keys("Hg6ILk")
+        self.driver.find_element_by_id("myuser").send_keys(self.user)
         self.driver.find_element_by_id("mypass").clear()
-        self.driver.find_element_by_id("mypass").send_keys("5oGeRmsPzdsK72JWh3gt")
+        self.driver.find_element_by_id("mypass").send_keys(self.password)
         self.driver.find_element_by_id("myok").click()
         # get balance, login is OK when balance >= 0.00000001
         self.balance = self.get_balance()
@@ -146,7 +177,9 @@ class JustDiceBet():
         raise Exception('bet was unsuccessful')
         
     def tearDown(self):
-        self.driver.quit()
+        try:
+            self.driver.quit()
+        except: pass
         
         if os.name != 'nt':
             self.display.stop()

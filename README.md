@@ -23,31 +23,18 @@ pip install EasyProcess
 ```
 
 On windows, install Python 2.7, Tor Browser and Selenium. That should do it.
+```
 Python:		http://www.python.org/download/
 Tor Bundle: https://www.torproject.org/projects/torbrowser.html.en
 Selenium: 	http://docs.seleniumhq.org/download/
+```
 
 Please tell me if something is missing.
 
 CONFIG
 -------------
 
-is done in the .py file itself. Just edit some vars:
-
-```
-# if you want to see what is happening set to 1:
-self.visible = 0
-
-# bot failed after losing X rounds. Start bet is changed on that.
-# If no bet is possible with this setting, it uses 0.00000001 as start bet.
-self.lose_rounds = 13 # about 0.1 % risk
-
-# which chance to play:
-self.chance=49.5
-
-# multiply by what on lose:
-self.multiplier = 2.0
-```
+Copy config-DEFAULT.py to config.py. Then just edit some vars in config.py, they are good commented.
 
 RUN
 -------------
