@@ -15,7 +15,7 @@ It's tested on python 2.7 on linux.
 I installed these:
 
 ```
-aptitude install firefox xvfb xterm xserver-xephyr
+aptitude install firefox xvfb xterm xserver-xephyr fvwm
 xhost +
 pip install selenium
 pip install PyVirtualDisplay
@@ -40,6 +40,17 @@ RUN
 -------------
 
 python just-dice-bot.py
+
+ON ERRORS
+-------------
+
+* make sure, you have the latest version
+* open your config, set visible=1
+* explain, what you expect the bot to do (the error)
+* explain, what you see and what the bot does
+* describe your system (linux/windows, python version, ...)
+* copy the stack trace from command line if any
+* report on github: https://github.com/KgBC/just-dice-bot/issues
 
 LICENSE
 -------------

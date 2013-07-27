@@ -3,7 +3,7 @@
 
 """
 Simple martingale bot for just-dice.com
-Copyright (C) 2013 KgBC <>
+Copyright (C) 2013 KgBC <IFGIWg@tormail.org>
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -52,8 +52,15 @@ class JustDiceBet():
         lost_sum = 0.0
         lost_rows = 0
         
+        print "Simple martingale bot for just-dice.com"
+        print "Copyright (C) 2013 KgBC <IFGIWg@tormail.org>"
+        print "under GPLv2 (see source)"
+        
+        print "Set up selenium ..."
         self.setUp()
+        print "Login ..."
         self.do_login()
+        print "Start betting ..."
         #start betting
         bet = self.get_max_bet()
         while True: #for bet_count in range(100):
@@ -153,7 +160,7 @@ class JustDiceBet():
                 return balance
             time.sleep(1)
         #timeout
-        raise Exception('null balance')
+        raise Exception('null balance or login error')
         
     def do_bet(self, chance, bet):
         # bet: chance to win
@@ -166,7 +173,7 @@ class JustDiceBet():
         # roll high
         self.driver.find_element_by_id("a_hi").click()
         # compare balance
-        for i in range(300):
+        for i in range(3000):
             new_balance = self.get_balance()
             if new_balance != self.balance:
                 saldo = new_balance-self.balance
