@@ -1,1 +1,1 @@
-cmd /k c:\python27\python just-dice-bot.py
+cmd /k \python27\python just-dice-bot.py

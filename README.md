@@ -22,11 +22,29 @@ pip install PyVirtualDisplay
 pip install EasyProcess
 ```
 
-On windows, install Python 2.7, Selenium and Firefox. That should do it.
+On windows, install Python 2.7, Selenium and Firefox. Here in Detail:
 ```
-Python:		http://www.python.org/download/
+* Python 2.7:
+  Download and install http://www.python.org/ftp/python/2.7.5/python-2.7.5.msi
+* Requirements to run Selenium in python:
+  We need some modules in python. first: setuptools and pip:
+    Install http://www.lfd.uci.edu/~gohlke/pythonlibs/2ydk2k2o/setuptools-0.9.7.win32-py2.7.exe
+	Install http://www.lfd.uci.edu/~gohlke/pythonlibs/2ydk2k2o/pip-1.4.win32-py2.7.exe
 Selenium: 	http://docs.seleniumhq.org/download/
-Firefox: 	https://www.mozilla.org/en-US/firefox/fx/#desktop
+  #open a cmd box:
+  Start menu - search for 'cmd' - open cmd.exe
+  #in cmd type (and press Return after each line):
+    #change to the dir where pip.exe is in, usually:
+	cd \python27\scripts
+	#install selenium module for python
+    pip install -U selenium
+  Firefox: 	
+    Install firefox from https://www.mozilla.org/en-US/firefox/fx/#desktop
+* Config:
+  copy config-DEFAULT.py to config.py
+  edit your config.py with an text editor (your user/password, ...)
+* Start:
+  doubleclick on 'start.bat'
 ```
 
 Please tell me if something is missing.
