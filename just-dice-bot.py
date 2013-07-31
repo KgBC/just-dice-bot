@@ -146,7 +146,6 @@ class JustDiceBet():
             
         #all bets done (with 'while True' this will never happen)
         print
-        self.total = 0.1
         if self.total > 0.0:
             tip = (self.total/100*self.autotip) - 0.0001 #tip excluding fee.
             print "Congratulations, you won %s since %s (this session)" % (
