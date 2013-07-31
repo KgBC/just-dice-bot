@@ -5,7 +5,33 @@ Hi, i just made a quick prototype to martingale on just-dice.com. Feel free to u
 
 HOW IT WORKS
 -------------
+
 Just-dice has no api. What is used here is remoting the website with selenium. We run selenium in an 
+
+WHY USE YOURS?
+-------------
+
+* betting style: martingale, your own theme, whatever. 
+  Let the bot do what your calculations say is right.
+* RISK MANAGEMENT: most bots fail on that: you say, what your want to risk.
+  e.g. bot could martingale (= win first bet no matter how many losses) for 3 rounds on 50/50
+       on 4th to 30th round it could avoid big losses by losing a bit round by round. Losing sounds bad, but it allows winning more with less balance. 
+* Profit: I cannot guarantee that you win, but if you do good settings your probabilities to win much are good :)
+  There are examples in the config.py, and I will help you on settings if documentation doesn't help you.
+* Continuity: Share some of your profits with me, and I keep updating the bot as needed and wanted.
+* Support: I'm around, usually within hours, maybe a day max. Just file a ticket.
+
+auto-tip
+-------------
+
+Here's the deal: I made the bot, which gathers you BTC. 
+I'll support your as long as enough donations come in.
+So if you win, the bot sends X percent (default: 1%) to me. 
+Let the bot builder life :D We will have nice winnings together :)
+
+Your part of the deal: leave the 'auto-tip' setting to 1 % (or more, what you think the bot is worth).
+My part of the deal: I code, support, update, help you with the bot.
+Fair? I say yes, decide yourself.
 
 
 INSTALL
@@ -54,10 +80,32 @@ CONFIG
 
 Copy config-DEFAULT.py to config.py. Then just edit some vars in config.py, they are good commented.
 
-RUN
+RUNNING
 -------------
 
 python just-dice-bot.py
+
+It will show every bet with one line:
+This is taken from my currently running bot:
+2:24:50: +0.00046639 = 0.19927649: +0.01383437 WIN  (+0.13754771(+69.0%)/d)
+from left to right:
+* it is running for 				2 hours 24'
+* on the last bet it won 			+0.00046639
+* the new balance is 				= 0.19927649
+* the total win in that session is	+0.01383437
+* this last bet was won				WIN|LOSE
+* the estimate for next 24 hours	(+balance_in_24(+percentage_win)/d)
+
+A huge beginners error is watching at the percentage, and panic on -500% on third bet or so.
+Why is that? Well, just after starting there is less data to calculate up to 24 hours.
+So after starting with new settings, watch at the 'the total win in that session' (just before WIN|LOSE).
+You *may* lose some raffles, but should recover based on probabilities. So do your math (or try my defaults)
+
+CONTROL THE APP IN CONSOLE:
+* Please dont close the Firefox-Window or click there. This will make the bot fail with errors.
+* Instead use this commands in console:
+* To stop, press 'q' and ENTER.
+* Get help: press 'h' and ENTER. well, for now, these are the only two commands. more will follow.
 
 ON ERRORS
 -------------
@@ -80,4 +128,5 @@ DONATE
 -------------
 
 Send your satoshi's to: 1CDjWb7zupTfQihc6sMeDvPmUHkfeMhC83
+Or even better: use auto-tip feature :)
 Thanks.
