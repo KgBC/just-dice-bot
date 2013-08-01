@@ -73,3 +73,24 @@ jdb_config = {
 #    "safe_perc"  : 5.0,
 #    "auto-tip"   : 1,
 #}
+
+# just another variant for settings:
+# you know, we are in python here. so we could code: see that multiplyer:
+# raise less, win more per round (but don't win all losses every round)
+#jdb_config = {
+#    "visible"    : 1,
+#    "user"       : "YOUR_USER",
+#    "pass"       : "YOUR_PASSWORD",
+#    "lose_rounds": 25,
+#    "chance"     : 49.5,
+#    "multiplier" : 
+#            [ 2.5, 2.5, 2.5]+           
+#            [(10.0-x)/10+1 for x in range(0,10)],
+#    "safe_perc"  : 5.0,
+#    "auto-tip"   : 1,
+#}
+# if you want to know, what '[ 2.5, 2.5, 2.5]+ [(10.0-x)/10+1 for x in range(0,10)]' means, 
+# fire up a python shell and paste:
+#In [1]: [ 2.5, 2.5, 2.5]+ [(10.0-x)/10+1 for x in range(0,10)]
+#Out[1]: [2.5, 2.5, 2.5, 2.0, 1.9, 1.8, 1.7, 1.6, 1.5, 1.4, 1.3, 1.2, 1.1]
+#see? python as we love it (well some of us :D)

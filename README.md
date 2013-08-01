@@ -126,7 +126,7 @@ LICENSE
 GPLv2 applies. Please refer to this project:
 https://github.com/KgBC/just-dice-bot
 
-DONATE
+DONATE (Beer)
 -------------
 
 Send your satoshi's to: 1CDjWb7zupTfQihc6sMeDvPmUHkfeMhC83

@@ -23,6 +23,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 import os, sys
 import select
 
+import logging
+logging.basicConfig(
+            filename='bets.log',
+            level=logging.INFO, 
+            format='%(asctime)s, %(levelname)s: %(message)s'
+            )
+
 if os.name != 'nt':
     from pyvirtualdisplay import Display
     from easyprocess import EasyProcess
@@ -95,7 +102,7 @@ class JustDiceBet():
                     lost_rows = 0
                 else:
                     #lose
-                    bet = bet*self.get_multiplyer(lost_rows, bet)
+                    bet = bet*self.get_multiplyer(lost_rows)
                     #next rounds vars
                     lost_rows += 1
                     lost_sum += saldo
@@ -118,7 +125,7 @@ class JustDiceBet():
                 win_24h = self.total*day_sec/difftime_sec
                 win_24h_percent = win_24h/self.balance*100
                 
-                print "%s: %s = %s: %s %s (%s(%s%%)/d)%s" % (
+                bet_info = "%s: %s = %s: %s %s (%s(%s%%)/d)%s" % (
                                    str(difftime).split('.')[0],
                                    "%+.8f" % saldo, 
                                    "%0.8f" % self.balance,
@@ -127,6 +134,8 @@ class JustDiceBet():
                                    "%+.8f" % win_24h,   #will be more as starting bet should raise
                                    "%+.1f" % win_24h_percent,
                                    warn)
+                print bet_info
+                logging.info(bet_info)
                 #read command line
                 while sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
                     cmd = sys.stdin.readline().rstrip('\n')
@@ -201,7 +210,7 @@ class JustDiceBet():
         #last round is r, to include that round we stop with r+1
         for round in range(2,r+1):
             used_base += base
-            multi = self.get_multiplyer(round-2, bet)   #array pos 0 = round 2
+            multi = self.get_multiplyer(round-2)   #array pos 0 = round 2
             base = base*multi
             #print multi, base
         base += used_base
@@ -290,7 +299,7 @@ class JustDiceBet():
         #timeout - retry
         return 0.0
         
-    def get_multiplyer(self, r, bet):
+    def get_multiplyer(self, r):
         #we may have a list of round numbers:
         if type(self.multiplier) is list:
             if r >= len(self.multiplier):
