@@ -195,13 +195,23 @@ class JustDiceBet():
         #new method: simulate instead of calculate. 
         #  slightly slower, but easier and more flexible
         bet = b
-        #print "start:", bet
-        for round in reversed(range(0,r)):
-            multi = self.get_multiplyer(round, bet)
-            bet = bet/multi
-            #print multi, bet
+        base = 1.0          #base for calculation
+        used_base = 0.0     #bet amount we cumulate before a win
+        #first bet is done without raise, so start with 2
+        #last round is r, to include that round we stop with r+1
+        for round in range(2,r+1):
+            used_base += base
+            multi = self.get_multiplyer(round-2, bet)   #array pos 0 = round 2
+            base = base*multi
+            #print multi, base
+        base += used_base
+        #print base
+        bet = bet/base
         if bet < 1e-08:
+            print "calculated starting bet: %s, betting %s" % (
+                       "%+.12f" % bet, "%+.8f" % 1e-08)
             bet = 1e-08
+        #raise Exception('STOP')
         return bet
         
     def setUp(self):
