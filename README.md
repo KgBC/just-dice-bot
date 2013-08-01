@@ -83,18 +83,20 @@ Copy config-DEFAULT.py to config.py. Then just edit some vars in config.py, they
 RUNNING
 -------------
 
-python just-dice-bot.py
+```python just-dice-bot.py```
 
 It will show every bet with one line:
 This is taken from my currently running bot:
-2:24:50: +0.00046639 = 0.19927649: +0.01383437 WIN  (+0.13754771(+69.0%)/d)
-from left to right:
-* it is running for 				2 hours 24'
-* on the last bet it won 			+0.00046639
-* the new balance is 				= 0.19927649
-* the total win in that session is	+0.01383437
-* this last bet was won				WIN|LOSE
-* the estimate for next 24 hours	(+balance_in_24(+percentage_win)/d)
+
+    2:24:50: +0.00046639 = 0.19927649: +0.01383437 WIN  (+0.13754771(+69.0%)/d)
+    from left to right:
+    * it is running for 				2 hours 24'
+    * on the last bet it won 			+0.00046639
+    * the new balance is 				= 0.19927649
+    * the total win in that session is	+0.01383437
+    * this last bet was won				WIN|LOSE
+    * the estimate for next 24 hours	(+balance_in_24(+percentage_win)/d)
+
 
 A huge beginners error is watching at the percentage, and panic on -500% on third bet or so.
 Why is that? Well, just after starting there is less data to calculate up to 24 hours.

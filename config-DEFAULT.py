@@ -49,7 +49,7 @@ jdb_config = {
     "pass"       : "YOUR_PASSWORD",
     "lose_rounds": 30,					#bet, so that we could lose for X rounds. Minimum bet is 0.00000001.
     "chance"     : 49.5,				#which chance do we want to bet on
-    "multiplier" : 2.0					#multiply bet by X on lose
+    "multiplier" : 2.0,					#multiply bet by X on lose
     "safe_perc"  : 5.0,                 #percent of balance is NOT used for first bet calculation
     "auto-tip"   : 1,                   #IMPORTANT: 
                                         #This is my deal: I made the bot, which gathers you BTC. 
