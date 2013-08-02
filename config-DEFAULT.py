@@ -94,3 +94,19 @@ jdb_config = {
 #In [1]: [ 2.5, 2.5, 2.5]+ [(10.0-x)/10+1 for x in range(0,10)]
 #Out[1]: [2.5, 2.5, 2.5, 2.0, 1.9, 1.8, 1.7, 1.6, 1.5, 1.4, 1.3, 1.2, 1.1]
 #see? python as we love it (well some of us :D)
+
+#another variant: 'lose' after some rounds, and start from starting bet again:
+# needs testing, see https://github.com/KgBC/just-dice-bot/issues/9#issuecomment-21992305
+#jdb_config = {
+#    "visible"    : 0,
+#    "user"       : "YOUR_USER",
+#    "pass"       : "YOUR_PASSWORD",
+#    "chance"     : 49.5,
+#    "lose_rounds": 6,
+#    "multiplier" : 
+#            [ 2.0, 2.0, 2.0, 2.0, 2.0, 'lose5' ],   
+#                        #lose5 this accepts loss after 6 rounds and starts with a new first bet.
+#                        #it uses 5% of (balance*safe_perc%). multiplier must match!
+#    "safe_perc"  : 5.0,
+#    "auto-tip"   : 1,
+#}

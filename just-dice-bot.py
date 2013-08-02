@@ -44,20 +44,93 @@ import random
 import traceback
 import signal
 
-from config import jdb_config #this is your config
+try:
+    from config import jdb_config #this is your config
+except:
+    print "you have no working config.py. Please review README."
+    sys.exit(20)
 
 class JustDiceBet():
+    def get_conf(self, name, default):
+        if jdb_config.has_key(name):
+            return jdb_config[name]
+        else: return default
+    def get_conf_int(self, name, default):
+        try: 
+            i = int(self.get_conf(name, default))
+            return i
+        except ValueError:
+            print "config.py: could not read %s config option as integer. Please review README."
+            sys.exit(21)
+    def get_conf_float(self, name, default):
+        try: 
+            f = float(self.get_conf(name, default))
+            return f
+        except ValueError:
+            print "config.py: could not read %s config option as integer. Please review README."
+            sys.exit(22)
+    
     def __init__(self):
-        self.user = jdb_config["user"]
-        self.password = jdb_config["pass"]
+        print
+        print "Simple martingale bot for just-dice.com"
+        print "Copyright (C) 2013 KgBC <IFGIWg@tormail.org>"
+        print "under GPLv2 (see source)"
+        print
+        print "News/new versions see https://github.com/KgBC/just-dice-bot"
+        
+        self.user = self.get_conf("user", "")
+        self.password = self.get_conf("pass", "")
         #to debug we want a nicer output:
-        self.visible = jdb_config["visible"]
-        self.lose_rounds = int( jdb_config["lose_rounds"] )
-        self.chance = float( jdb_config["chance"] )
-        self.multiplier = jdb_config["multiplier"]
-        self.safe_perc = jdb_config["safe_perc"]
-        self.autotip = float( jdb_config["auto-tip"] )
-        if self.autotip > 100.0: self.autotip=100.0
+        self.visible = self.get_conf_int("visible", 0)
+        self.lose_rounds = self.get_conf_int("lose_rounds", -1)
+        self.chance = self.get_conf_float("chance", -1.0)
+        self.multiplier = self.get_conf("multiplier", "")
+        self.safe_perc = self.get_conf_float("safe_perc", 0.0)
+        self.autotip = self.get_conf_float("auto-tip", 1)
+        
+        #test settings
+        if self.user=="":
+            print "you need to specify a user name. See config.py"
+            sys.exit(1)
+        if self.password=="":
+            print "you need to specify a password. See config.py"
+            sys.exit(2)
+        if not (0 <= self.visible <= 1):
+            print "visible could be 1 or 0. See config.py"
+            self.visible = 1
+        if self.lose_rounds <= 0:
+            print "lose_rounds must be a number > 0. See config.py"
+            sys.exit(3)
+        if not (0.0 < self.chance < 100.0):
+            print "chance must be a playable chance. See config.py"
+            sys.exit(4)
+        if not self.multiplier:
+            print "a multiplyer must be defined. See config.py"
+            sys.exit(5)
+        if not (0.0 <= self.safe_perc < 100.0):
+            print "safe_perc must be greater 0 and below 100. See config.py"
+            sys.exit(6)
+        if not (0.0 <= self.autotip <= 50.0): 
+            print "auto-tip could be anything between 0 and 50 %. See config.py"
+            self.autotip=50.0
+            
+        #do we accept a lose somewhere?
+        self.maxlose_perc = 100.0 #we will lose all if we need to play more rounds as excpected.
+        if type(self.multiplier) is list:
+            last = self.multiplier[-1]
+            if last.lower().startswith('lose'):
+                #check params:
+                if self.lose_rounds != len(self.multiplier):
+                    print "you are using 'loseX' syntax in multiplyer, lose_rounds must match played rounds."
+                    sys.exit(23)
+                try:
+                    self.maxlose_perc = float(self.multiplier[-1][4:])
+                except:
+                    print "multiplier error, loseX must be a number"
+                    sys.exit(7)
+                if not 0.0 < self.maxlose_perc <= 100.0:
+                    print "multiplyer: loseX must be greater 0 and below 100. See config.py"
+                    sys.exit(8)
         
         #internal vars
         self.balance = 0.0
@@ -67,13 +140,6 @@ class JustDiceBet():
         self.most_rows_lost = 0
         lost_sum = 0.0
         lost_rows = 0
-        
-        print
-        print "Simple martingale bot for just-dice.com"
-        print "Copyright (C) 2013 KgBC <IFGIWg@tormail.org>"
-        print "under GPLv2 (see source)"
-        print
-        print "News/new versions see https://github.com/KgBC/just-dice-bot"
         
         print
         print "Set up selenium (this will take a while, be patient) ..."
@@ -95,6 +161,7 @@ class JustDiceBet():
         while self.run:
             #bet
             try:
+                warn = ''
                 #bet
                 saldo = self.do_bet(chance=self.chance, bet=bet)
                 if saldo > 0.0:
@@ -106,16 +173,21 @@ class JustDiceBet():
                     lost_sum = 0.0
                     lost_rows = 0
                 else:
-                    #lose
-                    bet = bet*self.get_multiplyer(lost_rows)
-                    #next rounds vars
-                    lost_rows += 1
-                    lost_sum += saldo
+                    #lose, multiplyer for next round:
+                    multi = self.get_multiplyer(lost_rows)
+                    if multi == 'lose':
+                        warn += ", we lose"
+                        bet = self.get_max_bet()
+                        lost_rows = 0
+                    else:
+                        bet = bet*multi
+                        #next rounds vars
+                        lost_rows += 1
+                        lost_sum += saldo
                     
-                #win:
+                #add win/lose:
                 self.total += saldo
                 #warnings:
-                warn = ''
                 if lost_sum < self.max_lose:   #numbers are negative
                     self.max_lose = lost_sum
                     warn += ', max lost: %s' % ("%+.8f" % self.max_lose,)
@@ -161,15 +233,18 @@ class JustDiceBet():
                         except ValueError:
                             print "command '%s' failed, keeping old safe_perc" % (cmd,)
                     elif cmd.lower().startswith('r'):
-                        try:
-                            r = int(cmd[1:])
-                            if r>=0:
-                                self.lose_rounds = r
-                                l = "setting lose_rounds to: %s" % (r,)
-                                print l
-                                logging.info(l)
-                        except ValueError:
-                            print "command '%s' failed, keeping old lose_rounds" % (cmd,)
+                        if self.maxlose_perc != 100:
+                            print "setting lose_rounds is disabled, incompatible with your multiplyer setting."
+                        else:
+                            try:
+                                r = int(cmd[1:])
+                                if r>=0:
+                                    self.lose_rounds = r
+                                    l = "setting lose_rounds to: %s" % (r,)
+                                    print l
+                                    logging.info(l)
+                            except ValueError:
+                                print "command '%s' failed, keeping old lose_rounds" % (cmd,)
                     else:
                         print "command '%s' not found." % (cmd,)
                         self.help()
@@ -225,7 +300,7 @@ class JustDiceBet():
         
         #we want to lose after X rounds:
         r = self.lose_rounds
-        b = self.balance - self.safe_balance
+        b = (self.balance - self.safe_balance) /100*self.maxlose_perc
         
         #new method: simulate instead of calculate. 
         #  slightly slower, but easier and more flexible
@@ -348,8 +423,11 @@ class JustDiceBet():
             m = self.multiplier
         #we have single multiplyer, is it a formula?
         if type(m) is str:
-            #is a formula, eval:
-            m = 0.0+eval(m)
+            if m.lower().startswith('lose'):
+                m = 'lose'
+            else:
+                #is a formula, eval:
+                m = 0.0+eval(m)
         #now we should have a float
         return m
     
