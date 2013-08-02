@@ -118,19 +118,20 @@ class JustDiceBet():
         self.maxlose_perc = 100.0 #we will lose all if we need to play more rounds as excpected.
         if type(self.multiplier) is list:
             last = self.multiplier[-1]
-            if last.lower().startswith('lose'):
-                #check params:
-                if self.lose_rounds != len(self.multiplier):
-                    print "you are using 'loseX' syntax in multiplyer, lose_rounds must match played rounds."
-                    sys.exit(23)
-                try:
-                    self.maxlose_perc = float(self.multiplier[-1][4:])
-                except:
-                    print "multiplier error, loseX must be a number"
-                    sys.exit(7)
-                if not 0.0 < self.maxlose_perc <= 100.0:
-                    print "multiplyer: loseX must be greater 0 and below 100. See config.py"
-                    sys.exit(8)
+            if type(last) is str:
+                if last.lower().startswith('lose'):
+                    #check params:
+                    if self.lose_rounds != len(self.multiplier):
+                        print "you are using 'loseX' syntax in multiplyer, lose_rounds must match played rounds."
+                        sys.exit(23)
+                    try:
+                        self.maxlose_perc = float(self.multiplier[-1][4:])
+                    except:
+                        print "multiplier error, loseX must be a number"
+                        sys.exit(7)
+                    if not 0.0 < self.maxlose_perc <= 100.0:
+                        print "multiplyer: loseX must be greater 0 and below 100. See config.py"
+                        sys.exit(8)
         
         #internal vars
         self.balance = 0.0
