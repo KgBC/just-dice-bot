@@ -82,6 +82,11 @@ class JustDiceBet():
         self.do_login()
         self.help()
         
+        config_no_credentials = jdb_config
+        config_no_credentials["user"] = '*'
+        config_no_credentials["pass"] = '*'
+        logging.info("starting with config: %s" % (repr(config_no_credentials),) )
+        
         print "Start betting ..."
         self.starttime = datetime.utcnow()
         #start betting
@@ -144,6 +149,27 @@ class JustDiceBet():
                         self.run = False
                     elif cmd.lower() in ['h','?','help']:
                         self.help()
+                    elif cmd.lower().startswith('s'):
+                        try:
+                            sp = int(cmd[1:])
+                            if sp<=100 and sp>=0:
+                                self.safe_perc = sp
+                                self.safe_balance = 0.0
+                                l = "resetting safe_perc, new value from now on: %s%%" % (sp,)
+                                print l
+                                logging.info(l)
+                        except ValueError:
+                            print "command '%s' failed, keeping old safe_perc" % (cmd,)
+                    elif cmd.lower().startswith('r'):
+                        try:
+                            r = int(cmd[1:])
+                            if r>=0:
+                                self.lose_rounds = r
+                                l = "setting lose_rounds to: %s" % (r,)
+                                print l
+                                logging.info(l)
+                        except ValueError:
+                            print "command '%s' failed, keeping old lose_rounds" % (cmd,)
                     else:
                         print "command '%s' not found." % (cmd,)
                         self.help()
@@ -216,11 +242,19 @@ class JustDiceBet():
         base += used_base
         #print base
         bet = bet/base
+        bets_infos = "bets: "
         if bet < 1e-08:
-            print "calculated starting bet: %s, betting %s" % (
-                       "%+.12f" % bet, "%+.8f" % 1e-08)
+            bets_infos += "roundup from %s to " % (
+                                 "%+.12f" % bet,)
             bet = 1e-08
-        #raise Exception('STOP')
+        bet_sim = bet
+        bets_infos += "%s - " % ("%+.12f" % bet_sim,)
+        for round in range(2, r+1):
+            multi = self.get_multiplyer(round-2)   #array pos 0 = round 2
+            bet_sim = bet_sim*multi
+            bets_infos += "%s - " % ("%+.12f" % bet_sim,)
+        bets_infos += "LOSE."
+        logging.debug(bets_infos)
         return bet
         
     def setUp(self):
@@ -264,12 +298,14 @@ class JustDiceBet():
         self.driver.find_element_by_link_text("My Bets").click()
         
     def get_balance(self):
-        for i in range(30):
-            balance_text = self.driver.find_element_by_id("pct_balance").get_attribute("value")
-            try: balance = float(balance_text)
-            except: balance = 0.0
-            if balance != 0.0:
-                return balance
+        for i in range(60):
+            try:
+                balance_text = self.driver.find_element_by_id("pct_balance").get_attribute("value")
+                try: balance = float(balance_text)
+                except: balance = 0.0
+                if balance != 0.0:
+                    return balance
+            except: pass #is that a good idea? At least it will fail after 60s.
             time.sleep(1)
         #timeout
         raise Exception('null balance or login error')
@@ -308,6 +344,8 @@ class JustDiceBet():
             else:
                 #return multiplyer for round
                 m = self.multiplier[r]
+        else:
+            m = self.multiplier
         #we have single multiplyer, is it a formula?
         if type(m) is str:
             #is a formula, eval:
@@ -340,8 +378,14 @@ class JustDiceBet():
             self.display.stop()
             
     def help(self):
-        print "--- press 'q|quit' to quit, 'h|?|help' for command help ---"
-        print "---       finish your commands with the ENTER key       ---"
+        print "-"*60
+        print "'q|quit'     : quit"
+        print "'h|?|help'   : this help"
+        print "'s10'        : set safe_perc to 10 (0..100)"
+        print "               also resets the current safe balance"
+        print "'r25'        : set rounds to 25 (1++)"
+        print "end all your commands with the ENTER key."
+        print "-"*60
     
     def is_element_present(self, how, what):
         try:
