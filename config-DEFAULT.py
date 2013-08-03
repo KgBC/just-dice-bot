@@ -110,3 +110,16 @@ jdb_config = {
 #    "safe_perc"  : 5.0,
 #    "auto-tip"   : 1,
 #}
+
+#new feature: different chances per round
+#jdb_config = {
+#    "visible"    : 0,
+#    "user"       : "YOUR_USER",
+#    "pass"       : "YOUR_PASSWORD",
+#    "min_bet"    : 0.00000002,      #minimum bet 2 satoshi
+#    "lose_rounds": 8,               #do 8 rounds
+#    "multiplier" : [      11.0,],   #multiply bet by 11 every round
+#    "chance"     : [49.5, 90.0,],   #first round with 49,5% chance, 2nd to 8th round with 90% chance
+#    "safe_perc"  : 10.0,
+#    "auto-tip"   : 1,
+#}

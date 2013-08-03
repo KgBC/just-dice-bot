@@ -88,15 +88,15 @@ RUNNING
 It will show every bet with one line:
 This is taken from my currently running bot:
 
-    2:24:50: +0.00046639 = 0.19927649: +0.01383437 WIN  (+0.13754771(+69.0%)/d)
+    7:16:37: -0.00000002 LOSE (49.5%) = 0.00947565 total. session: +0.00012332 (+0.00040672(+4.3%)/d)
+	7:16:41: +0.00000002 WIN  (90.0%) = 0.00947567 total. session: +0.00012334 (+0.00040672(+4.3%)/d)
     from left to right:
-    * it is running for 				2 hours 24'
-    * on the last bet it won 			+0.00046639
-    * the new balance is 				= 0.19927649
-    * the total win in that session is	+0.01383437
-    * this last bet was won				WIN|LOSE
-    * the estimate for next 24 hours	(+balance_in_24(+percentage_win)/d)
-
+    * it is running for 				7 hours 16'
+    * on the last bet it won 			+0.00000002 WIN
+    * thi chance for this bet was		90.0%
+    * the new balance is 				= 0.00947567 total
+    * the total win in that session is	session: +0.00012334
+    * the estimate for next 24 hours	we will win +0.00040672 which is +4.3% per day
 
 A huge beginners error is watching at the percentage, and panic on -500% on third bet or so.
 Why is that? Well, just after starting there is less data to calculate up to 24 hours.

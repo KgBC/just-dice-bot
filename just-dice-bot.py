@@ -83,10 +83,13 @@ class JustDiceBet():
         #to debug we want a nicer output:
         self.visible = self.get_conf_int("visible", 0)
         self.lose_rounds = self.get_conf_int("lose_rounds", -1)
-        self.chance = self.get_conf_float("chance", -1.0)
+        self.chance = self.get_conf("chance", "") #self.get_conf_float("chance", -1.0)
         self.multiplier = self.get_conf("multiplier", "")
         self.safe_perc = self.get_conf_float("safe_perc", 0.0)
         self.autotip = self.get_conf_float("auto-tip", 1)
+        self.min_bet = self.get_conf_float('min_bet', 1e-8)
+        #debug options:
+        self.slow_bet = self.get_conf_int('slow_bet', 0)
         
         #test settings
         if self.user=="":
@@ -101,8 +104,8 @@ class JustDiceBet():
         if self.lose_rounds <= 0:
             print "lose_rounds must be a number > 0. See config.py"
             sys.exit(3)
-        if not (0.0 < self.chance < 100.0):
-            print "chance must be a playable chance. See config.py"
+        if not self.chance:
+            print "a chance must be defined. See config.py"
             sys.exit(4)
         if not self.multiplier:
             print "a multiplyer must be defined. See config.py"
@@ -113,6 +116,9 @@ class JustDiceBet():
         if not (0.0 <= self.autotip <= 50.0): 
             print "auto-tip could be anything between 0 and 50 %. See config.py"
             self.autotip=50.0
+        if not (0 <= self.slow_bet <= 1):
+            print "slow_bet could be 1 or 0."
+            self.slow_bet = 1
             
         #do we accept a lose somewhere?
         self.maxlose_perc = 100.0 #we will lose all if we need to play more rounds as excpected.
@@ -141,6 +147,7 @@ class JustDiceBet():
         self.most_rows_lost = 0
         lost_sum = 0.0
         lost_rows = 0
+        self.show_funds_warning = True
         
         print
         print "Set up selenium (this will take a while, be patient) ..."
@@ -159,12 +166,16 @@ class JustDiceBet():
         #start betting
         bet = self.get_max_bet()
         self.run = True
+        lost_rows = 0
         while self.run:
             #bet
             try:
                 warn = ''
-                #bet
-                saldo = self.do_bet(chance=self.chance, bet=bet)
+                #prepare bet
+                chance = self.get_chance(lost_rows)
+                bet = self.get_rounded_bet(bet, chance)
+                #BET BET BET          
+                saldo = self.do_bet(chance=chance, bet=bet)
                 if saldo > 0.0:
                     #win
                     #bet=start_bet
@@ -203,12 +214,13 @@ class JustDiceBet():
                 win_24h = self.total*day_sec/difftime_sec
                 win_24h_percent = win_24h/self.balance*100
                 
-                bet_info = "%s: %s = %s: %s %s (%s(%s%%)/d)%s" % (
+                bet_info = "%s: %s %s (%s%%) = %s total. session: %s (%s(%s%%)/d)%s" % (
                                    str(difftime).split('.')[0],
                                    "%+.8f" % saldo, 
+                                   "WIN " if (saldo>=0) else "LOSE",
+                                   chance,
                                    "%0.8f" % self.balance,
                                    "%+.8f" % self.total,
-                                   "WIN " if (saldo>=0) else "LOSE",
                                    "%+.8f" % win_24h,   #will be more as starting bet should raise
                                    "%+.1f" % win_24h_percent,
                                    warn)
@@ -319,10 +331,16 @@ class JustDiceBet():
         #print base
         bet = bet/base
         bets_infos = "bets: "
-        if bet < 1e-08:
+        if bet < self.min_bet:
+            if self.show_funds_warning:
+                print "ATTENTION: we do not have enough funds to play your system defined in config.py. Choose:"
+                print "    * ignore from now on and play it anyway:     ENTER"
+                print "    * stop playing (and change system or funds): CTRL+C"
+                sys.stdin.readline()
+            self.show_funds_warning = False #ignore
             bets_infos += "roundup from %s to " % (
                                  "%+.12f" % bet,)
-            bet = 1e-08
+            bet = self.min_bet
         bet_sim = bet
         bets_infos += "%s - " % ("%+.12f" % bet_sim,)
         for round in range(2, r+1):
@@ -374,7 +392,7 @@ class JustDiceBet():
         self.driver.find_element_by_link_text("My Bets").click()
         
     def get_balance(self):
-        for i in range(60):
+        for i in range(60*20):
             try:
                 balance_text = self.driver.find_element_by_id("pct_balance").get_attribute("value")
                 try: balance = float(balance_text)
@@ -382,7 +400,7 @@ class JustDiceBet():
                 if balance != 0.0:
                     return balance
             except: pass #is that a good idea? At least it will fail after 60s.
-            time.sleep(1)
+            time.sleep(.05)
         #timeout
         raise Exception('null balance or login error')
         
@@ -393,7 +411,11 @@ class JustDiceBet():
         # bet: bet size
         self.driver.find_element_by_id("pct_bet").clear()
         self.driver.find_element_by_id("pct_bet").send_keys("%10.8f" % bet)
-        time.sleep(.5)
+        #time.sleep(.5)
+        if self.slow_bet:
+            print "doing bet with chance %s and bet %s. Press ENTER to continue (or wait 10s)." % ("%4.2f" % chance, "%10.8f" % bet)
+            if select.select([sys.stdin], [], [], 10)[0]:
+                cmd = sys.stdin.readline()
         # roll high or low on random
         if random.randint(0,1):
             hi_lo = "a_hi"
@@ -410,7 +432,32 @@ class JustDiceBet():
             time.sleep(.05)
         #timeout - retry
         return 0.0
-        
+    
+    def get_rounded_bet(self, bet, chance):
+        bet_base = round(1.0/((99.0/chance)-1.0))*1e-08
+        rounded_bet = round( bet /bet_base)*bet_base
+        if rounded_bet < bet_base:
+            rounded_bet = bet_base
+        return rounded_bet
+    
+    def get_chance(self, r):
+        #we may have a list of round numbers:
+        if type(self.chance) is list:
+            if r >= len(self.chance):
+                #return last chance for all other rows
+                m = self.chance[-1]
+            else:
+                #return chance for round
+                m = self.chance[r]
+        else:
+            m = self.chance
+        #we have single chance, is it a formula?
+        if type(m) is str:
+            #is a formula, eval:
+            m = 0.0+eval(m)
+        #now we should have a float
+        return m
+    
     def get_multiplyer(self, r):
         #we may have a list of round numbers:
         if type(self.multiplier) is list:
