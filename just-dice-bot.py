@@ -446,7 +446,7 @@ class JustDiceBet():
         
     def get_balance(self):
         try:
-            for i in range(10*20):
+            for i in range(25*20):
                 try:
                     balance_text = self.driver.find_element_by_id("pct_balance").get_attribute("value")
                     try: balance = float(balance_text)
@@ -515,16 +515,17 @@ class JustDiceBet():
                 return True
             except Exception as e:
                 err = e
-            
-        
+    
     def get_rounded_bet(self, bet, chance):
         if self.debug_issue_21: logging.info( 'issue21: chance=%s' % (chance,) )
-        bet_base = round(1.0/((99.0/chance)-1.0))*1e-08
+        bet_base = math.ceil( (99.0/chance-1) *100)/100
         if self.debug_issue_21: logging.info( 'issue21: bet=%s, bet_base=%s' % (bet,bet_base,) )
-        rounded_bet = round( bet /bet_base)*bet_base
+        satoshi = bet/1e-08
+        satoshi_rest = satoshi % bet_base
+        if satoshi_rest: #we have a rest
+            satoshi = satoshi - satoshi_rest + bet_base
+        rounded_bet = satoshi*1e-08
         if self.debug_issue_21: logging.info( 'issue21: rounded_bet=%s' % (rounded_bet,) )
-        if rounded_bet < bet_base:
-            rounded_bet = bet_base
         return rounded_bet
     
     def get_chance(self, r):
@@ -560,7 +561,7 @@ class JustDiceBet():
         #we have single multiplyer, is it a formula?
         if type(m) is str:
             if m.lower().startswith('lose'):
-                m = 'lose'
+                return 'lose'   #not convertible to a float :)
             else:
                 #is a formula, eval:
                 m = 0.0+eval(m)
