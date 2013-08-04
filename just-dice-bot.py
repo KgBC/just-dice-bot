@@ -51,6 +51,28 @@ except:
     print "you have no working config.py. Please review README."
     sys.exit(20)
 
+#stdin handling that works on windows and linux
+from thread import start_new_thread
+global commandlist
+commandlist = []
+def get_stdin_thread():
+    global commandlist
+    while True:
+        try:
+            commandlist.append( raw_input() )
+        except EOFError:
+            pass
+start_new_thread(get_stdin_thread, ())
+def get_stdin():
+    global commandlist
+    while True:
+        try:
+            cmd = commandlist.pop(0)
+        except IndexError:
+            break
+        yield cmd
+
+
 class JustDiceBet():
     def get_conf(self, name, default):
         if jdb_config.has_key(name):
@@ -238,8 +260,9 @@ class JustDiceBet():
                     print bet_info
                     logging.info(bet_info)
                     #read command line
-                    while sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
-                        cmd = sys.stdin.readline().rstrip('\n')
+                    #while sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
+                    #    cmd = sys.stdin.readline().rstrip('\n')
+                    for cmd in get_stdin():
                         if   cmd.lower() in ['q','quit','exit']:
                             #quit
                             self.run = False
@@ -293,8 +316,9 @@ class JustDiceBet():
                        "%+.8f" % self.total, 
                        str(difftime).split('.')[0] )
             if self.autotip==0:
-                print "Why not tip 1%% = %s to the developer? 1CDjWb7zupTfQihc6sMeDvPmUHkfeMhC83\nYou may also set 'auto-tip' in config.py. \nThanks!" % (
-                          "%+.8f" % (self.total/100*1) )
+                if not tip <= 0.0:
+                    print "Why not tip 1%% = %s to the developer? 1CDjWb7zupTfQihc6sMeDvPmUHkfeMhC83\nYou may also set 'auto-tip' in config.py. \nThanks!" % (
+                              "%+.8f" % (self.total/100*1) )
             elif tip <= 0.0:
                 print "You are using auto-tip feature, thanks. This time tip is too low because of fee's."
             else:
@@ -304,7 +328,12 @@ class JustDiceBet():
                 print "If you want to cancel the tip, press Enter in next %ss. Also read documentation on auto-tip." % (s,)
                 
                 #while 
-                if sys.stdin in select.select([sys.stdin], [], [], s)[0]:
+                #if sys.stdin in select.select([sys.stdin], [], [], s)[0]:
+                cancel = False
+                for x in range(0,s):
+                    if get_stdin():
+                        cancel = True
+                if cancel:
                     cmd = sys.stdin.readline().rstrip('\n')
                     print "You decided to cancel my tip. You could also help the project by recommending it somewhere!\nShare this link: https://github.com/KgBC/just-dice-bot"
                 else:
@@ -444,8 +473,13 @@ class JustDiceBet():
                 #time.sleep(.5)
                 if self.slow_bet:
                     print "doing bet with chance %s and bet %s. Press ENTER to continue (or wait 10s)." % ("%4.2f" % chance, "%10.8f" % bet)
-                    if select.select([sys.stdin], [], [], 10)[0]:
-                        cmd = sys.stdin.readline()
+                    #if select.select([sys.stdin], [], [], 10)[0]:
+                    #    cmd = sys.stdin.readline()
+                    for x in range(0,10):
+                        if get_stdin():
+                            #we continue
+                            break
+                        time.sleep(1)
                 # roll high or low on random
                 if random.randint(0,1):
                     hi_lo = "a_hi"
