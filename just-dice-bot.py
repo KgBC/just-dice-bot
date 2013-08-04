@@ -43,6 +43,7 @@ from datetime import datetime, timedelta
 import random
 import traceback
 import signal
+from urllib2 import URLError
 
 try:
     from config import jdb_config #this is your config
@@ -90,6 +91,7 @@ class JustDiceBet():
         self.min_bet = self.get_conf_float('min_bet', 1e-8)
         #debug options:
         self.slow_bet = self.get_conf_int('slow_bet', 0)
+        self.debug_issue_21 = self.get_conf('debug_issue_21', 0)
         
         #test settings
         if self.user=="":
@@ -174,93 +176,109 @@ class JustDiceBet():
                 #prepare bet
                 chance = self.get_chance(lost_rows)
                 bet = self.get_rounded_bet(bet, chance)
-                #BET BET BET          
-                saldo = self.do_bet(chance=chance, bet=bet)
-                if saldo > 0.0:
-                    #win
-                    #bet=start_bet
-                    bet = self.get_max_bet()
-                    
-                    #stats about losing
-                    lost_sum = 0.0
-                    lost_rows = 0
+                #are we below safe-balance? STOP
+                if self.balance < self.safe_balance:
+                    print "STOPPING, we would get below safe percentage in this round!"
+                    print "safe_perc: %s%%, balance: %s, safe balance: %s" % (
+                                  self.safe_perc, 
+                                  "%+.8f" % self.balance,
+                                  "%+.8f" % self.safe_balance)
+                    self.run = False
                 else:
-                    #lose, multiplyer for next round:
-                    multi = self.get_multiplyer(lost_rows)
-                    if multi == 'lose':
-                        warn += ", we lose"
+                    #BET BET BET          
+                    saldo = self.do_bet(chance=chance, bet=bet)
+                    if saldo > 0.0:
+                        #win
+                        #bet=start_bet
                         bet = self.get_max_bet()
+                        
+                        #stats about losing
+                        lost_sum = 0.0
                         lost_rows = 0
                     else:
-                        bet = bet*multi
-                        #next rounds vars
-                        lost_rows += 1
-                        lost_sum += saldo
-                    
-                #add win/lose:
-                self.total += saldo
-                #warnings:
-                if lost_sum < self.max_lose:   #numbers are negative
-                    self.max_lose = lost_sum
-                    warn += ', max lost: %s' % ("%+.8f" % self.max_lose,)
-                if lost_rows > self.most_rows_lost:
-                    self.most_rows_lost = lost_rows
-                    warn += ', max rows: %s' % (self.most_rows_lost,)
-                
-                #total in 24 hours
-                difftime = (datetime.utcnow()-self.starttime)
-                day_sec = 24*60*60
-                difftime_sec = difftime.days*day_sec + difftime.seconds
-                win_24h = self.total*day_sec/difftime_sec
-                win_24h_percent = win_24h/self.balance*100
-                
-                bet_info = "%s: %s %s (%s%%) = %s total. session: %s (%s(%s%%)/d)%s" % (
-                                   str(difftime).split('.')[0],
-                                   "%+.8f" % saldo, 
-                                   "WIN " if (saldo>=0) else "LOSE",
-                                   chance,
-                                   "%0.8f" % self.balance,
-                                   "%+.8f" % self.total,
-                                   "%+.8f" % win_24h,   #will be more as starting bet should raise
-                                   "%+.1f" % win_24h_percent,
-                                   warn)
-                print bet_info
-                logging.info(bet_info)
-                #read command line
-                while sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
-                    cmd = sys.stdin.readline().rstrip('\n')
-                    if   cmd.lower() in ['q','quit','exit']:
-                        #quit
-                        self.run = False
-                    elif cmd.lower() in ['h','?','help']:
-                        self.help()
-                    elif cmd.lower().startswith('s'):
-                        try:
-                            sp = int(cmd[1:])
-                            if sp<=100 and sp>=0:
-                                self.safe_perc = sp
-                                self.safe_balance = 0.0
-                                l = "resetting safe_perc, new value from now on: %s%%" % (sp,)
-                                print l
-                                logging.info(l)
-                        except ValueError:
-                            print "command '%s' failed, keeping old safe_perc" % (cmd,)
-                    elif cmd.lower().startswith('r'):
-                        if self.maxlose_perc != 100:
-                            print "setting lose_rounds is disabled, incompatible with your multiplyer setting."
+                        #lose, multiplyer for next round:
+                        multi = self.get_multiplyer(lost_rows)
+                        if multi == 'lose':
+                            warn += ", we lose"
+                            bet = self.get_max_bet()
+                            lost_rows = 0
                         else:
-                            try:
-                                r = int(cmd[1:])
-                                if r>=0:
-                                    self.lose_rounds = r
-                                    l = "setting lose_rounds to: %s" % (r,)
-                                    print l
-                                    logging.info(l)
-                            except ValueError:
-                                print "command '%s' failed, keeping old lose_rounds" % (cmd,)
-                    else:
-                        print "command '%s' not found." % (cmd,)
-                        self.help()
+                            bet = bet*multi
+                            #next rounds vars
+                            lost_rows += 1
+                            lost_sum += saldo
+                        
+                    #add win/lose:
+                    self.total += saldo
+                    #warnings:
+                    if lost_sum < self.max_lose:   #numbers are negative
+                        self.max_lose = lost_sum
+                        warn += ', max lost: %s' % ("%+.8f" % self.max_lose,)
+                    if lost_rows > self.most_rows_lost:
+                        self.most_rows_lost = lost_rows
+                        warn += ', max rows: %s' % (self.most_rows_lost,)
+                    
+                    #total in 24 hours
+                    difftime = (datetime.utcnow()-self.starttime)
+                    day_sec = 24*60*60
+                    difftime_sec = difftime.days*day_sec + difftime.seconds
+                    win_24h = self.total*day_sec/difftime_sec
+                    win_24h_percent = win_24h/self.balance*100
+                    
+                    bet_info = "%s: %s %s (%s%%) = %s total. session: %s (%s(%s%%)/d)%s" % (
+                                       str(difftime).split('.')[0],
+                                       "%+.8f" % saldo, 
+                                       "WIN " if (saldo>=0) else "LOSE",
+                                       chance,
+                                       "%0.8f" % self.balance,
+                                       "%+.8f" % self.total,
+                                       "%+.8f" % win_24h,   #will be more as starting bet should raise
+                                       "%+.1f" % win_24h_percent,
+                                       warn)
+                    print bet_info
+                    logging.info(bet_info)
+                    #read command line
+                    while sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
+                        cmd = sys.stdin.readline().rstrip('\n')
+                        if   cmd.lower() in ['q','quit','exit']:
+                            #quit
+                            self.run = False
+                        elif cmd.lower() in ['h','?','help']:
+                            self.help()
+                        elif cmd.lower().startswith('s'):
+                            if cmd[1:]: #set
+                                try:
+                                    sp = int(cmd[1:])
+                                    if sp<=100 and sp>=0:
+                                        self.safe_perc = sp
+                                        self.safe_balance = 0.0
+                                        l = "resetting safe_perc, new value from now on: %s%%" % (sp,)
+                                        print l
+                                        logging.info(l)
+                                except ValueError:
+                                    print "command '%s' failed, keeping old safe_perc" % (cmd,)
+                            else: #get
+                                print "safe_perc is set to %s%%, which is currently %s" % (
+                                               self.safe_perc, "%0.8f" % self.safe_balance)
+                        elif cmd.lower().startswith('r'):
+                            if cmd[1:]: #set
+                                if self.maxlose_perc != 100:
+                                    print "setting lose_rounds is disabled, incompatible with your multiplyer setting."
+                                else:
+                                    try:
+                                        r = int(cmd[1:])
+                                        if r>=0:
+                                            self.lose_rounds = r
+                                            l = "setting lose_rounds to: %s" % (r,)
+                                            print l
+                                            logging.info(l)
+                                    except ValueError:
+                                        print "command '%s' failed, keeping old lose_rounds" % (cmd,)
+                            else: #get
+                                print "lose_rounds is set to %s" % (self.lose_rounds,)
+                        else:
+                            print "command '%s' not found." % (cmd,)
+                            self.help()
             except KeyboardInterrupt:
                 self.run = False
             except Exception as e:
@@ -314,6 +332,9 @@ class JustDiceBet():
         #we want to lose after X rounds:
         r = self.lose_rounds
         b = (self.balance - self.safe_balance) /100*self.maxlose_perc
+        
+        #for bet rounding issues we keep 1%
+        b = b*0.99
         
         #new method: simulate instead of calculate. 
         #  slightly slower, but easier and more flexible
@@ -376,66 +397,98 @@ class JustDiceBet():
         
     #def test_just_dice_recorded(self):
     def do_login(self):
-        self.driver.get(self.base_url + "/")
-        #close fancy box (name)
-        self.driver.find_element_by_css_selector("a.fancybox-item.fancybox-close").click()
-        # login
-        self.driver.find_element_by_link_text("Account").click()
-        self.driver.find_element_by_id("myuser").clear()
-        self.driver.find_element_by_id("myuser").send_keys(self.user)
-        self.driver.find_element_by_id("mypass").clear()
-        self.driver.find_element_by_id("mypass").send_keys(self.password)
-        self.driver.find_element_by_id("myok").click()
-        # get balance, login is OK when balance >= 0.00000001
-        self.balance = self.get_balance()
-        # show my bets
-        self.driver.find_element_by_link_text("My Bets").click()
+        try:
+            self.driver.get(self.base_url + "/")
+            #close fancy box (name)
+            self.driver.find_element_by_css_selector("a.fancybox-item.fancybox-close").click()
+            # login
+            self.driver.find_element_by_link_text("Account").click()
+            self.driver.find_element_by_id("myuser").clear()
+            self.driver.find_element_by_id("myuser").send_keys(self.user)
+            self.driver.find_element_by_id("mypass").clear()
+            self.driver.find_element_by_id("mypass").send_keys(self.password)
+            self.driver.find_element_by_id("myok").click()
+            # get balance, login is OK when balance >= 0.00000001
+            self.balance = self.get_balance()
+            # show my bets
+            self.driver.find_element_by_link_text("My Bets").click()
+        except Exception as e:
+            self.reconnect(e)
         
     def get_balance(self):
-        for i in range(60*20):
-            try:
-                balance_text = self.driver.find_element_by_id("pct_balance").get_attribute("value")
-                try: balance = float(balance_text)
-                except: balance = 0.0
-                if balance != 0.0:
-                    return balance
-            except: pass #is that a good idea? At least it will fail after 60s.
-            time.sleep(.05)
+        try:
+            for i in range(10*20):
+                try:
+                    balance_text = self.driver.find_element_by_id("pct_balance").get_attribute("value")
+                    try: balance = float(balance_text)
+                    except: balance = 0.0
+                    if balance != 0.0:
+                        return balance
+                except: pass #is that a good idea? At least it will fail after 60s.
+                time.sleep(.05)
+        except Exception as e:
+            self.reconnect(e)
+        
         #timeout
-        raise Exception('null balance or login error')
+        raise Exception('null balance, login error or selenium down')
         
     def do_bet(self, chance, bet):
-        # bet: chance to win
-        self.driver.find_element_by_id("pct_chance").clear()
-        self.driver.find_element_by_id("pct_chance").send_keys("%4.2f" % chance)
-        # bet: bet size
-        self.driver.find_element_by_id("pct_bet").clear()
-        self.driver.find_element_by_id("pct_bet").send_keys("%10.8f" % bet)
-        #time.sleep(.5)
-        if self.slow_bet:
-            print "doing bet with chance %s and bet %s. Press ENTER to continue (or wait 10s)." % ("%4.2f" % chance, "%10.8f" % bet)
-            if select.select([sys.stdin], [], [], 10)[0]:
-                cmd = sys.stdin.readline()
-        # roll high or low on random
-        if random.randint(0,1):
-            hi_lo = "a_hi"
-        else:
-            hi_lo = "a_lo"
-        self.driver.find_element_by_id(hi_lo).click()
-        # compare balance (timeout 10s)
-        for i in range(200):
-            new_balance = self.get_balance()
-            if new_balance != self.balance:
-                saldo = new_balance-self.balance
-                self.balance = new_balance
-                return saldo
-            time.sleep(.05)
-        #timeout - retry
-        return 0.0
+        while True: #try again if something fails
+            try:
+                # bet: chance to win
+                self.driver.find_element_by_id("pct_chance").clear()
+                self.driver.find_element_by_id("pct_chance").send_keys("%4.2f" % chance)
+                # bet: bet size
+                self.driver.find_element_by_id("pct_bet").clear()
+                self.driver.find_element_by_id("pct_bet").send_keys("%10.8f" % bet)
+                #time.sleep(.5)
+                if self.slow_bet:
+                    print "doing bet with chance %s and bet %s. Press ENTER to continue (or wait 10s)." % ("%4.2f" % chance, "%10.8f" % bet)
+                    if select.select([sys.stdin], [], [], 10)[0]:
+                        cmd = sys.stdin.readline()
+                # roll high or low on random
+                if random.randint(0,1):
+                    hi_lo = "a_hi"
+                else:
+                    hi_lo = "a_lo"
+                self.driver.find_element_by_id(hi_lo).click()
+                # compare balance (timeout 10s)
+                for i in range(100):
+                    new_balance = self.get_balance()
+                    if new_balance != self.balance:
+                        saldo = new_balance-self.balance
+                        self.balance = new_balance
+                        return saldo
+                    time.sleep(.05)
+                #timeout - retry
+                self.reconnect()
+            except Exception as e:
+                self.reconnect(e)
     
+    def reconnect(self, err='timeout'):
+        while True:
+            print "reconnecting (be patient)"
+            logging.error( 'reconnect %s' % (err,) )
+            try:
+                time.sleep(5)
+                self.tearDown()
+            except Exception as e:
+                pass
+            try:
+                time.sleep(5)
+                self.setUp()
+                self.do_login()
+                return True
+            except Exception as e:
+                err = e
+            
+        
     def get_rounded_bet(self, bet, chance):
+        if self.debug_issue_21: logging.info( 'issue21: chance=%s' % (chance,) )
         bet_base = round(1.0/((99.0/chance)-1.0))*1e-08
+        if self.debug_issue_21: logging.info( 'issue21: bet=%s, bet_base=%s' % (bet,bet_base,) )
         rounded_bet = round( bet /bet_base)*bet_base
+        if self.debug_issue_21: logging.info( 'issue21: rounded_bet=%s' % (rounded_bet,) )
         if rounded_bet < bet_base:
             rounded_bet = bet_base
         return rounded_bet
@@ -445,18 +498,19 @@ class JustDiceBet():
         if type(self.chance) is list:
             if r >= len(self.chance):
                 #return last chance for all other rows
-                m = self.chance[-1]
+                c = self.chance[-1]
             else:
                 #return chance for round
-                m = self.chance[r]
+                c = self.chance[r]
         else:
-            m = self.chance
+            c = self.chance
         #we have single chance, is it a formula?
-        if type(m) is str:
+        if type(c) is str:
             #is a formula, eval:
-            m = 0.0+eval(m)
+            c = 0.0+eval(c)
         #now we should have a float
-        return m
+        c = float(c)
+        return c
     
     def get_multiplyer(self, r):
         #we may have a list of round numbers:
@@ -477,23 +531,31 @@ class JustDiceBet():
                 #is a formula, eval:
                 m = 0.0+eval(m)
         #now we should have a float
+        m = float(m)
         return m
     
     def do_autotip(self, tip):
-        self.driver.find_element_by_id("a_withdraw").click()
-        self.driver.find_element_by_id("wd_address").clear()
-        self.driver.find_element_by_id("wd_address").send_keys("1CDjWb7zupTfQihc6sMeDvPmUHkfeMhC83")
-        self.driver.find_element_by_id("wd_amount").clear()
-        self.driver.find_element_by_id("wd_amount").send_keys("%s" % ("%0.8f" % tip,) )
-        self.driver.find_element_by_id("wd_button").click()
+        while True:
+            try:
+                self.driver.find_element_by_id("a_withdraw").click()
+                self.driver.find_element_by_id("wd_address").clear()
+                self.driver.find_element_by_id("wd_address").send_keys("1CDjWb7zupTfQihc6sMeDvPmUHkfeMhC83")
+                self.driver.find_element_by_id("wd_amount").clear()
+                self.driver.find_element_by_id("wd_amount").send_keys("%s" % ("%0.8f" % tip,) )
+                self.driver.find_element_by_id("wd_button").click()
+            except Exception as e:
+                self.reconnect(e)
         time.sleep(2)
         #error?
-        err_text=""
-        if   self.is_element_present(By.XPATH, "//div[@id='form_error']/p[2]"):
-            err_text = self.driver.find_element_by_xpath("//div[@id='form_error']/p[2]").text
-        elif self.is_element_present(By.CSS_SELECTOR, "#form_error > p"):
-            err_text = self.driver.find_element_by_css_selector("#form_error > p").text
-        return err_text
+        try:
+            err_text=""
+            if   self.is_element_present(By.XPATH, "//div[@id='form_error']/p[2]"):
+                err_text = self.driver.find_element_by_xpath("//div[@id='form_error']/p[2]").text
+            elif self.is_element_present(By.CSS_SELECTOR, "#form_error > p"):
+                err_text = self.driver.find_element_by_css_selector("#form_error > p").text
+            return err_text
+        except Exception as e:
+            return "python error %s" % (e,)
     
     def tearDown(self):
         try:
@@ -509,7 +571,9 @@ class JustDiceBet():
         print "'h|?|help'   : this help"
         print "'s10'        : set safe_perc to 10 (0..100)"
         print "               also resets the current safe balance"
-        print "'r25'        : set rounds to 25 (1++)"
+        print "'s'          : get safe_perc and current safe balance"
+        print "'r25'        : set rounds to 25 (1..x)"
+        print "'r'          : get lose_rounds setting"
         print "end all your commands with the ENTER key."
         print "-"*60
     
