@@ -251,11 +251,11 @@ class JustDiceBet():
                                        str(difftime).split('.')[0],
                                        "%+.8f" % saldo, 
                                        "WIN " if (saldo>=0) else "LOSE",
-                                       chance,
-                                       "%0.8f" % self.balance,
-                                       "%+.8f" % self.total,
-                                       "%+.8f" % win_24h,   #will be more as starting bet should raise
-                                       "%+.1f" % win_24h_percent,
+                                       "%04.1f"  % chance,
+                                       "%0.8f"   % self.balance,
+                                       "%+.8f"   % self.total,
+                                       "%+.8f"   % win_24h,   #will be more as starting bet should raise
+                                       "%+06.1f" % win_24h_percent,
                                        warn)
                     print bet_info
                     logging.info(bet_info)
@@ -429,7 +429,9 @@ class JustDiceBet():
         try:
             self.driver.get(self.base_url + "/")
             #close fancy box (name)
-            self.driver.find_element_by_css_selector("a.fancybox-item.fancybox-close").click()
+            try:
+                self.driver.find_element_by_css_selector("a.fancybox-item.fancybox-close").click()
+            except: pass
             # login
             self.driver.find_element_by_link_text("Account").click()
             self.driver.find_element_by_id("myuser").clear()
@@ -601,7 +603,7 @@ class JustDiceBet():
             self.display.stop()
             
     def help(self):
-        print "-"*60
+        print "-"*120
         print "'q|quit'     : quit"
         print "'h|?|help'   : this help"
         print "'s10'        : set safe_perc to 10 (0..100)"
@@ -610,7 +612,7 @@ class JustDiceBet():
         print "'r25'        : set rounds to 25 (1..x)"
         print "'r'          : get lose_rounds setting"
         print "end all your commands with the ENTER key."
-        print "-"*60
+        print "-"*120
     
     def is_element_present(self, how, what):
         try:
