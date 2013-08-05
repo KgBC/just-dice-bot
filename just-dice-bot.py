@@ -72,7 +72,210 @@ def get_stdin():
             break
         yield cmd
 
+""" betting on just-dice """
+class JustDice_impl():
+    def __init__(self):
+        self.fake_starttime = timedelta(seconds=0)
+    
+    def setUp(self, visible, user, password):
+        self.visible = visible
+        self.user = user
+        self.password = password
+        
+        if os.name != 'nt':
+            self.display = Display(visible=visible,
+                              size=(1024, 768))
+            self.display.start()
+            
+            if visible:
+                #window manager for resizable windows
+                EasyProcess('fvwm').start()
+                """
+                def preexec_function():
+                    # Ignore the SIGINT signal by setting the handler to the standard
+                    # signal handler SIG_IGN.
+                    signal.signal(signal.SIGINT, signal.SIG_IGN)
+                subprocess.Popen(
+                    ['fvwm'],
+                    preexec_fn = preexec_function)
+                """
+        
+        self.driver = webdriver.Firefox()
+        self.driver.implicitly_wait(15)
+        self.base_url = "https://just-dice.com"
+        
+    def do_login(self):
+        try:
+            self.driver.get(self.base_url + "/")
+            #close fancy box (name)
+            try:
+                self.driver.find_element_by_css_selector("a.fancybox-item.fancybox-close").click()
+            except: pass
+            # login
+            self.driver.find_element_by_link_text("Account").click()
+            self.driver.find_element_by_id("myuser").clear()
+            self.driver.find_element_by_id("myuser").send_keys(self.user)
+            self.driver.find_element_by_id("mypass").clear()
+            self.driver.find_element_by_id("mypass").send_keys(self.password)
+            self.driver.find_element_by_id("myok").click()
+            # get balance, login is OK when balance >= 0.00000001
+            self.balance = self.get_balance()
+            # show my bets
+            self.driver.find_element_by_link_text("My Bets").click()
+        except Exception as e:
+            self.reconnect(e)
+        
+    def get_balance(self):
+        try:
+            for i in range(60*20):
+                try:
+                    balance_text = self.driver.find_element_by_id("pct_balance").get_attribute("value")
+                    try: balance = float(balance_text)
+                    except: balance = 0.0
+                    if balance != 0.0:
+                        return balance
+                except: pass #is that a good idea? At least it will fail after 25s.
+                time.sleep(.05)
+        except Exception as e:
+            self.reconnect(e)
+        
+        #timeout
+        raise Exception('null balance, login error or selenium down')
+        
+    def do_bet(self, chance, bet):
+        while True: #try again if something fails
+            try:
+                # bet: chance to win
+                self.driver.find_element_by_id("pct_chance").clear()
+                self.driver.find_element_by_id("pct_chance").send_keys("%4.2f" % chance)
+                # bet: bet size
+                self.driver.find_element_by_id("pct_bet").clear()
+                self.driver.find_element_by_id("pct_bet").send_keys("%10.8f" % bet)
+                #time.sleep(.5)
+                if self.slow_bet:
+                    print "doing bet with chance %s and bet %s. Press ENTER to continue (or wait 10s)." % ("%4.2f" % chance, "%10.8f" % bet)
+                    #if select.select([sys.stdin], [], [], 10)[0]:
+                    #    cmd = sys.stdin.readline()
+                    for x in range(0,10):
+                        if get_stdin():
+                            #we continue
+                            break
+                        time.sleep(1)
+                # roll high or low on random
+                if random.randint(0,1):
+                    hi_lo = "a_hi"
+                else:
+                    hi_lo = "a_lo"
+                self.driver.find_element_by_id(hi_lo).click()
+                # compare balance (timeout 10s)
+                for i in range(200):
+                    new_balance = self.get_balance()
+                    if new_balance != self.balance:
+                        saldo = new_balance-self.balance
+                        self.balance = new_balance
+                        return saldo
+                    time.sleep(.05)
+                #timeout - retry
+                self.reconnect()
+            except Exception as e:
+                self.reconnect(e)
+    
+    def do_autotip(self, tip):
+        while True:
+            try:
+                self.driver.find_element_by_id("a_withdraw").click()
+                self.driver.find_element_by_id("wd_address").clear()
+                self.driver.find_element_by_id("wd_address").send_keys("1CDjWb7zupTfQihc6sMeDvPmUHkfeMhC83")
+                self.driver.find_element_by_id("wd_amount").clear()
+                self.driver.find_element_by_id("wd_amount").send_keys("%s" % ("%0.8f" % tip,) )
+                self.driver.find_element_by_id("wd_button").click()
+            except Exception as e:
+                self.reconnect(e)
+        time.sleep(2)
+        #error?
+        try:
+            err_text=""
+            if   self.is_element_present(By.XPATH, "//div[@id='form_error']/p[2]"):
+                err_text = self.driver.find_element_by_xpath("//div[@id='form_error']/p[2]").text
+            elif self.is_element_present(By.CSS_SELECTOR, "#form_error > p"):
+                err_text = self.driver.find_element_by_css_selector("#form_error > p").text
+            return err_text
+        except Exception as e:
+            return "python error %s" % (e,)
+    
+    def tearDown(self):
+        try:
+            self.driver.quit()
+        except: pass
+        
+        if os.name != 'nt':
+            self.display.stop()
+    
+    def reconnect(self, err='timeout'):
+        while True:
+            print "reconnecting (be patient)"
+            logging.error( 'reconnect %s' % (err,) )
+            try:
+                time.sleep(5)
+                self.tearDown()
+            except Exception as e:
+                pass
+            try:
+                time.sleep(5)
+                self.setUp(self.visible, self.user, self.password)
+                self.do_login()
+                return True
+            except Exception as e:
+                err = e
+    
+class Simulate_impl():
+    def __init__(self, luck=0):
+        #just dice will start with:
+        self.balance = 100.0 #yes, 100btc. 
+        #so, if we end up simulating X rounds we immediatly know win/lose in %
+        self.fake_starttime = timedelta(seconds=1.5)
+        self.__bets = 0
+        self.__luck = luck
 
+    def setUp(self, visible, user, password):
+        self.visible = visible
+        self.user = user
+        self.password = password
+    
+    def do_login(self):
+        pass
+    
+    def get_balance(self):
+        return self.balance 
+    
+    def do_bet(self, chance, bet):
+        #small gap for inputs, we do a minimum sleep every 10 bets
+        self.__bets += 1
+        if self.__bets % 100 == 0:
+            time.sleep(0.1)
+        #bet simulation
+        num = random.random()*(100+self.__luck)  #by x% unlucky
+        #we always bet low
+        if num < chance:
+            #win
+            payout_perc = 99.0/chance   #1% house edge
+            saldo = bet*payout_perc
+        else:
+            #lose
+            saldo = -bet
+        self.balance += saldo
+        return saldo
+    
+    def do_autotip(self, tip):
+        print "*** no auto-tip in simulation ***"
+        return ""
+    
+    def tearDown(self):
+        pass
+    
+    def reconnect(self, err='timeout'):
+        raise Exception("whoaaa wait, why should I reconnect? I'm a simulator!")
+    
 class JustDiceBet():
     def get_conf(self, name, default):
         if jdb_config.has_key(name):
@@ -111,6 +314,8 @@ class JustDiceBet():
         self.safe_perc = self.get_conf_float("safe_perc", 0.0)
         self.autotip = self.get_conf_float("auto-tip", 1)
         self.min_bet = self.get_conf_float('min_bet', 1e-8)
+        self.simulate = self.get_conf_int("simulate", -1)
+        
         #debug options:
         self.slow_bet = self.get_conf_int('slow_bet', 0)
         self.debug_issue_21 = self.get_conf('debug_issue_21', 0)
@@ -143,6 +348,9 @@ class JustDiceBet():
         if not (0 <= self.slow_bet <= 1):
             print "slow_bet could be 1 or 0."
             self.slow_bet = 1
+        if not (-1 <= self.simulate):
+            print "simulate -1 for no simulaton, 0 for simulation, higher int for less luck in %. See config.py"
+            self.simulate = -1 #live play default
             
         #do we accept a lose somewhere?
         self.maxlose_perc = 100.0 #we will lose all if we need to play more rounds as excpected.
@@ -173,6 +381,18 @@ class JustDiceBet():
         lost_rows = 0
         self.show_funds_warning = True
         
+        #simulating?
+        if self.simulate==-1:
+            #not simulating:
+            self.remote_impl = JustDice_impl()
+            banner = " playing on just-dice.com with btc "
+        else:
+            self.remote_impl = Simulate_impl( luck=self.simulate )
+            banner = " fast, random simulating with 100btc (like %) "
+        print
+        print "#"*10 + banner + "#"*10
+        time.sleep(3)
+        
         print
         print "Set up selenium (this will take a while, be patient) ..."
         self.setUp()
@@ -187,16 +407,22 @@ class JustDiceBet():
         
         print "Start betting ..."
         self.starttime = datetime.utcnow()
+        self.betcount  = 0
         #start betting
         bet = self.get_max_bet()
         self.run = True
         lost_rows = 0
+        self.starting_balance = self.balance
+        self.lowest_balance = self.balance
+        self.highest_balance = self.balance
+        #import pydevd; pydevd.settrace('127.0.0.1')
         while self.run:
             #bet
             try:
                 warn = ''
                 #prepare bet
                 chance = self.get_chance(lost_rows)
+                self.betcount += 1
                 bet = self.get_rounded_bet(bet, chance)
                 #are we below safe-balance? STOP
                 if self.balance < self.safe_balance:
@@ -247,9 +473,17 @@ class JustDiceBet():
                     win_24h = self.total*day_sec/difftime_sec
                     win_24h_percent = win_24h/self.balance*100
                     
-                    bet_info = "%s: %s %s (%s%%) = %s total. session: %s (%s(%s%%)/d)%s" % (
+                    #lowest/highest balance:
+                    if self.balance < self.lowest_balance:
+                        self.lowest_balance = self.balance
+                    if self.balance > self.highest_balance:
+                        self.highest_balance = self.balance
+                    
+                    bet_info = "L%s|B%s/%s: %s %s (%s%%) = %s total. session: %s (%s(%s%%)/d)%s" % (
+                                       "%3i"     % lost_rows,
+                                       "%7i"     % self.betcount,
                                        str(difftime).split('.')[0],
-                                       "%+.8f" % saldo, 
+                                       "%+.8f"   % saldo, 
                                        "WIN " if (saldo>=0) else "LOSE",
                                        "%04.1f"  % chance,
                                        "%0.8f"   % self.balance,
@@ -257,8 +491,14 @@ class JustDiceBet():
                                        "%+.8f"   % win_24h,   #will be more as starting bet should raise
                                        "%+06.1f" % win_24h_percent,
                                        warn)
-                    print bet_info
-                    logging.info(bet_info)
+                    # when simulating print only every 100th bet info:
+                    if self.simulate == -1:
+                        print bet_info
+                        logging.info(bet_info)
+                    elif self.betcount % 100 == 0:
+                        print bet_info
+                        logging.info(bet_info)
+                    
                     #read command line
                     #while sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
                     #    cmd = sys.stdin.readline().rstrip('\n')
@@ -310,6 +550,13 @@ class JustDiceBet():
             
         #all bets done (with 'while True' this will never happen)
         print
+        print "Starting balance     : %s" % ("%+.8f" % self.starting_balance,)
+        print "Lowest   balance     : %s" % ("%+.8f" % self.lowest_balance,)
+        print "Highest  balance     : %s" % ("%+.8f" % self.highest_balance,)
+        print "Longest losing streak: %s rows" % (self.most_rows_lost,)
+        print "Most expensive streak: %s" % ("%+.8f" % self.max_lose,)
+        print 
+        
         if self.total > 0.0:
             tip = (self.total/100*self.autotip) - 0.0001 #tip excluding fee.
             print "Congratulations, you won %s since %s (this session)" % (
@@ -386,7 +633,11 @@ class JustDiceBet():
                 print "ATTENTION: we do not have enough funds to play your system defined in config.py. Choose:"
                 print "    * ignore from now on and play it anyway:     ENTER"
                 print "    * stop playing (and change system or funds): CTRL+C"
-                sys.stdin.readline()
+                while True:
+                    if get_stdin():
+                        #we continue
+                        break
+                    time.sleep(1)
             self.show_funds_warning = False #ignore
             bets_infos += "roundup from %s to " % (
                                  "%+.12f" % bet,)
@@ -400,124 +651,36 @@ class JustDiceBet():
         bets_infos += "LOSE."
         logging.debug(bets_infos)
         return bet
-        
+    
     def setUp(self):
-        if os.name != 'nt':
-            self.display = Display(visible=self.visible,
-                              size=(1024, 768))
-            self.display.start()
-            
-            if self.visible:
-                #window manager for resizable windows
-                EasyProcess('fvwm').start()
-                """
-                def preexec_function():
-                    # Ignore the SIGINT signal by setting the handler to the standard
-                    # signal handler SIG_IGN.
-                    signal.signal(signal.SIGINT, signal.SIG_IGN)
-                subprocess.Popen(
-                    ['fvwm'],
-                    preexec_fn = preexec_function)
-                """
-        
-        self.driver = webdriver.Firefox()
-        self.driver.implicitly_wait(15)
-        self.base_url = "https://just-dice.com"
-        
-    #def test_just_dice_recorded(self):
+        self.remote_impl.setUp(self.visible, self.user, self.password)
+    
     def do_login(self):
-        try:
-            self.driver.get(self.base_url + "/")
-            #close fancy box (name)
-            try:
-                self.driver.find_element_by_css_selector("a.fancybox-item.fancybox-close").click()
-            except: pass
-            # login
-            self.driver.find_element_by_link_text("Account").click()
-            self.driver.find_element_by_id("myuser").clear()
-            self.driver.find_element_by_id("myuser").send_keys(self.user)
-            self.driver.find_element_by_id("mypass").clear()
-            self.driver.find_element_by_id("mypass").send_keys(self.password)
-            self.driver.find_element_by_id("myok").click()
-            # get balance, login is OK when balance >= 0.00000001
-            self.balance = self.get_balance()
-            # show my bets
-            self.driver.find_element_by_link_text("My Bets").click()
-        except Exception as e:
-            self.reconnect(e)
-        
+        self.remote_impl.do_login()
+        self.balance = self.remote_impl.balance
+    
     def get_balance(self):
-        try:
-            for i in range(25*20):
-                try:
-                    balance_text = self.driver.find_element_by_id("pct_balance").get_attribute("value")
-                    try: balance = float(balance_text)
-                    except: balance = 0.0
-                    if balance != 0.0:
-                        return balance
-                except: pass #is that a good idea? At least it will fail after 60s.
-                time.sleep(.05)
-        except Exception as e:
-            self.reconnect(e)
-        
-        #timeout
-        raise Exception('null balance, login error or selenium down')
+        balance = self.remote_impl.get_balance()
+        return balance
         
     def do_bet(self, chance, bet):
-        while True: #try again if something fails
-            try:
-                # bet: chance to win
-                self.driver.find_element_by_id("pct_chance").clear()
-                self.driver.find_element_by_id("pct_chance").send_keys("%4.2f" % chance)
-                # bet: bet size
-                self.driver.find_element_by_id("pct_bet").clear()
-                self.driver.find_element_by_id("pct_bet").send_keys("%10.8f" % bet)
-                #time.sleep(.5)
-                if self.slow_bet:
-                    print "doing bet with chance %s and bet %s. Press ENTER to continue (or wait 10s)." % ("%4.2f" % chance, "%10.8f" % bet)
-                    #if select.select([sys.stdin], [], [], 10)[0]:
-                    #    cmd = sys.stdin.readline()
-                    for x in range(0,10):
-                        if get_stdin():
-                            #we continue
-                            break
-                        time.sleep(1)
-                # roll high or low on random
-                if random.randint(0,1):
-                    hi_lo = "a_hi"
-                else:
-                    hi_lo = "a_lo"
-                self.driver.find_element_by_id(hi_lo).click()
-                # compare balance (timeout 10s)
-                for i in range(100):
-                    new_balance = self.get_balance()
-                    if new_balance != self.balance:
-                        saldo = new_balance-self.balance
-                        self.balance = new_balance
-                        return saldo
-                    time.sleep(.05)
-                #timeout - retry
-                self.reconnect()
-            except Exception as e:
-                self.reconnect(e)
-    
+        self.remote_impl.slow_bet = self.slow_bet
+        saldo = self.remote_impl.do_bet(chance, bet)
+        self.balance = self.remote_impl.balance
+        self.starttime = self.starttime - self.remote_impl.fake_starttime
+        return saldo
+        
+    def do_autotip(self, tip):
+        err_text = self.remote_impl.do_autotip(tip)
+        return err_text
+        
+    def tearDown(self):
+        self.remote_impl.tearDown()
+            
     def reconnect(self, err='timeout'):
-        while True:
-            print "reconnecting (be patient)"
-            logging.error( 'reconnect %s' % (err,) )
-            try:
-                time.sleep(5)
-                self.tearDown()
-            except Exception as e:
-                pass
-            try:
-                time.sleep(5)
-                self.setUp()
-                self.do_login()
-                return True
-            except Exception as e:
-                err = e
-    
+        success = self.remote_impl.reconnect(err)
+        return success
+        
     def get_rounded_bet(self, bet, chance):
         if self.debug_issue_21: logging.info( 'issue21: chance=%s' % (chance,) )
         bet_base = math.ceil( (99.0/chance-1) *100)/100
@@ -571,37 +734,6 @@ class JustDiceBet():
         m = float(m)
         return m
     
-    def do_autotip(self, tip):
-        while True:
-            try:
-                self.driver.find_element_by_id("a_withdraw").click()
-                self.driver.find_element_by_id("wd_address").clear()
-                self.driver.find_element_by_id("wd_address").send_keys("1CDjWb7zupTfQihc6sMeDvPmUHkfeMhC83")
-                self.driver.find_element_by_id("wd_amount").clear()
-                self.driver.find_element_by_id("wd_amount").send_keys("%s" % ("%0.8f" % tip,) )
-                self.driver.find_element_by_id("wd_button").click()
-            except Exception as e:
-                self.reconnect(e)
-        time.sleep(2)
-        #error?
-        try:
-            err_text=""
-            if   self.is_element_present(By.XPATH, "//div[@id='form_error']/p[2]"):
-                err_text = self.driver.find_element_by_xpath("//div[@id='form_error']/p[2]").text
-            elif self.is_element_present(By.CSS_SELECTOR, "#form_error > p"):
-                err_text = self.driver.find_element_by_css_selector("#form_error > p").text
-            return err_text
-        except Exception as e:
-            return "python error %s" % (e,)
-    
-    def tearDown(self):
-        try:
-            self.driver.quit()
-        except: pass
-        
-        if os.name != 'nt':
-            self.display.stop()
-            
     def help(self):
         print "-"*120
         print "'q|quit'     : quit"
