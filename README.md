@@ -1,3 +1,5 @@
+hi guys, I'm back! I had some disease to deal with, so sorry for the features not fulfilled in time. I'll do some work here at home, and will be on the project in some days. #2013-10-02 KgBC
+
 just-dice-bot
 =============
 
