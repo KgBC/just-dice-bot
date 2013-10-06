@@ -77,6 +77,7 @@ def get_stdin():
 class JustDice_impl():
     def __init__(self):
         self.fake_starttime = timedelta(seconds=0)
+        self.ddos_last = datetime.utcnow()
     
     def setUp(self, visible, user, password):
         self.visible = visible
@@ -162,7 +163,31 @@ class JustDice_impl():
                             #we continue
                             break
                         time.sleep(1)
-                # roll high or low on random
+                # sleep before bet: https://github.com/KgBC/just-dice-bot/issues/26
+                if bet <= 9e-08:
+                    #bets of 0.00000001 BTC to 0.00000009 BTC are delayed by 1 second
+                    ddos_wait = timedelta(seconds=1.0)
+                elif bet <= 99e-08:
+                    #bets of 0.00000010 BTC to 0.00000099 BTC are delayed by 0.8 seconds
+                    ddos_wait = timedelta(seconds=0.8)
+                elif bet <= 999e-08:
+                    #bets of 0.00000100 BTC to 0.00000999 BTC are delayed by 0.6 seconds
+                    ddos_wait = timedelta(seconds=0.6)
+                elif bet <= 9999e-08:
+                    #bets of 0.00001000 BTC to 0.00009999 BTC are delayed by 0.4 seconds
+                    ddos_wait = timedelta(seconds=0.4)
+                elif bet <= 99999e-08:
+                    #bets of 0.00010000 BTC to 0.00099999 BTC are delayed by 0.2 seconds
+                    ddos_wait = timedelta(seconds=0.2)
+                else: 
+                    #bets of 0.00100000 BTC or more are not delayed
+                    ddos_wait = timedelta(seconds=0.0)
+                sleeptime = ( ddos_wait - (datetime.utcnow()-self.ddos_last) ).total_seconds()
+                if sleeptime > 0.0:
+                    time.sleep(sleeptime)
+                self.ddos_last = datetime.utcnow()
+                
+                # BET: roll high or low on random
                 if random.randint(0,1):
                     hi_lo = "a_hi"
                 else:
