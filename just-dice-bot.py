@@ -3,7 +3,7 @@
 
 """
 Simple martingale bot for just-dice.com
-Copyright (C) 2013 KgBC <IFGIWg@tormail.org>
+Copyright (c) 2013 KgBC <IFGIWg@tormail.org>
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -24,11 +24,7 @@ import os, sys
 import select
 
 import logging
-logging.basicConfig(
-            filename='bets.log',
-            level=logging.INFO, 
-            format='%(asctime)s, %(levelname)s: %(message)s'
-            )
+from logging.handlers import TimedRotatingFileHandler
 
 if os.name != 'nt':
     from pyvirtualdisplay import Display
@@ -44,6 +40,11 @@ import random
 import traceback
 import signal
 from urllib2 import URLError
+
+import sqlite3
+from matplotlib.figure import Figure  # @UnresolvedImport
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas  # @UnresolvedImport        
+import matplotlib.dates as mdates  # @UnresolvedImport
 
 try:
     from config import jdb_config #this is your config
@@ -214,7 +215,7 @@ class JustDice_impl():
     def reconnect(self, err='timeout'):
         while True:
             print "reconnecting (be patient)"
-            logging.error( 'reconnect %s' % (err,) )
+            logger.error( 'reconnect %s' % (err,) )
             try:
                 time.sleep(5)
                 self.tearDown()
@@ -233,7 +234,7 @@ class Simulate_impl():
         #just dice will start with:
         self.balance = 100.0 #yes, 100btc. 
         #so, if we end up simulating X rounds we immediatly know win/lose in %
-        self.fake_starttime = timedelta(seconds=1.5)
+        self.fake_starttime = timedelta(seconds=3.5)
         self.__bets = 0
         self.__luck = luck
 
@@ -254,6 +255,7 @@ class Simulate_impl():
         if self.__bets % 100 == 0:
             time.sleep(0.1)
         #bet simulation
+        saldo = -bet
         num = random.random()*(100+self.__luck)  #by x% unlucky
         #we always bet low
         if num < chance:
@@ -262,7 +264,7 @@ class Simulate_impl():
             saldo = bet*payout_perc
         else:
             #lose
-            saldo = -bet
+            pass #already payed
         self.balance += saldo
         return saldo
     
@@ -315,6 +317,11 @@ class JustDiceBet():
         self.autotip = self.get_conf_float("auto-tip", 1)
         self.min_bet = self.get_conf_float('min_bet', 1e-8)
         self.simulate = self.get_conf_int("simulate", -1)
+        self.simulate_showevery = 1
+        
+        #luck %
+        luck_estim = 0.0    #counting all luck we should have 
+        luck_lucky = 0.0    #counting real luck
         
         #debug options:
         self.slow_bet = self.get_conf_int('slow_bet', 0)
@@ -383,15 +390,37 @@ class JustDiceBet():
         
         #simulating?
         if self.simulate==-1:
+            log_fn = "bets.log"
+            graph_fn = "bets.png"
             #not simulating:
             self.remote_impl = JustDice_impl()
-            banner = " playing on just-dice.com with btc "
+            banner = " playing on just-dice.com with real btc "
         else:
+            log_fn = "bets-simulating.log"
+            graph_fn = "bets-simulated.png"
             self.remote_impl = Simulate_impl( luck=self.simulate )
             banner = " fast, random simulating with 100btc (like %) "
         print
         print "#"*10 + banner + "#"*10
         time.sleep(3)
+        
+        global logHandler
+        global logFormatter
+        global logger
+        logHandler = TimedRotatingFileHandler(log_fn, when="midnight")
+        logFormatter = logging.Formatter('%(asctime)s, %(levelname)s: %(message)s')
+        logHandler.setFormatter( logFormatter )
+        logger = logging.getLogger( 'MyLogger' )
+        logger.addHandler( logHandler )
+        logger.setLevel( logging.INFO )
+        
+        #temporary database
+        self.db = sqlite3.connect('', isolation_level=None,
+                                  detect_types=sqlite3.PARSE_DECLTYPES) #we want an temporary file based database
+        self.db.execute("""
+                CREATE TABLE IF NOT EXISTS bets
+                    (dt TIMESTAMP, balance REAL);
+                """)
         
         print
         print "Set up selenium (this will take a while, be patient) ..."
@@ -403,7 +432,7 @@ class JustDiceBet():
         config_no_credentials = jdb_config
         config_no_credentials["user"] = '*'
         config_no_credentials["pass"] = '*'
-        logging.info("starting with config: %s" % (repr(config_no_credentials),) )
+        logger.info("starting with config: %s" % (repr(config_no_credentials),) )
         
         print "Start betting ..."
         self.starttime = datetime.utcnow()
@@ -415,8 +444,8 @@ class JustDiceBet():
         self.starting_balance = self.balance
         self.lowest_balance = self.balance
         self.highest_balance = self.balance
-        #import pydevd; pydevd.settrace('127.0.0.1')
         while self.run:
+            #import pydevd; pydevd.settrace('127.0.0.1')
             #bet
             try:
                 warn = ''
@@ -433,16 +462,19 @@ class JustDiceBet():
                                   "%+.8f" % self.safe_balance)
                     self.run = False
                 else:
-                    #BET BET BET          
+                    #BET BET BET
                     saldo = self.do_bet(chance=chance, bet=bet)
+                    #luck stats estimate
+                    luck_estim += chance
                     if saldo > 0.0:
                         #win
-                        #bet=start_bet
                         bet = self.get_max_bet()
                         
                         #stats about losing
                         lost_sum = 0.0
                         lost_rows = 0
+                        #luck stats - won
+                        luck_lucky += 100.0
                     else:
                         #lose, multiplyer for next round:
                         multi = self.get_multiplyer(lost_rows)
@@ -459,29 +491,39 @@ class JustDiceBet():
                     #add win/lose:
                     self.total += saldo
                     #warnings:
+                    sim_show_warn = False
                     if lost_sum < self.max_lose:   #numbers are negative
                         self.max_lose = lost_sum
                         warn += ', max lost: %s' % ("%+.8f" % self.max_lose,)
                     if lost_rows > self.most_rows_lost:
                         self.most_rows_lost = lost_rows
                         warn += ', max rows: %s' % (self.most_rows_lost,)
+                        sim_show_warn = True
                     
                     #total in 24 hours
-                    difftime = (datetime.utcnow()-self.starttime)
+                    now = datetime.utcnow()
+                    difftime = (now-self.starttime)
                     day_sec = 24*60*60
                     difftime_sec = difftime.days*day_sec + difftime.seconds
                     win_24h = self.total*day_sec/difftime_sec
                     win_24h_percent = win_24h/self.balance*100
                     
                     #lowest/highest balance:
+                    #self.starting_balance
                     if self.balance < self.lowest_balance:
                         self.lowest_balance = self.balance
                     if self.balance > self.highest_balance:
                         self.highest_balance = self.balance
                     
-                    bet_info = "L%s|B%s/%s: %s %s (%s%%) = %s total. session: %s (%s(%s%%)/d)%s" % (
+                    self.db.execute("""
+                        INSERT INTO bets
+                            VALUES (?, ?);
+                        """, (now, self.balance) )
+                    
+                    bet_info = "%s%%luck round%s|B%s/%s: %s %s (%s%%) = %s total. session: %s (%s(%s%%)/d)%s" % (
+                                       "%+6.1f" % (luck_lucky/luck_estim*100-100),
                                        "%3i"     % lost_rows,
-                                       "%7i"     % self.betcount,
+                                       "%6i"     % self.betcount,
                                        str(difftime).split('.')[0],
                                        "%+.8f"   % saldo, 
                                        "WIN " if (saldo>=0) else "LOSE",
@@ -491,13 +533,50 @@ class JustDiceBet():
                                        "%+.8f"   % win_24h,   #will be more as starting bet should raise
                                        "%+06.1f" % win_24h_percent,
                                        warn)
-                    # when simulating print only every 100th bet info:
+                    # when simulating print only every 100th bet info + bet's with warnings:
                     if self.simulate == -1:
                         print bet_info
-                        logging.info(bet_info)
-                    elif self.betcount % 100 == 0:
+                        logger.info(bet_info)
+                    elif sim_show_warn:
                         print bet_info
-                        logging.info(bet_info)
+                        logger.info(bet_info)
+                    elif self.betcount % self.simulate_showevery == 0:
+                        print bet_info
+                        logger.info(bet_info)
+                        
+                    #graphing
+                    if self.simulate == -1:
+                        graph_every = 10 #not simulating, every 10 bets
+                    else:
+                        graph_every = 1000
+                    
+                    if self.betcount % graph_every == 0:
+                        c = self.db.execute("""
+                                    SELECT dt, balance 
+                                    FROM bets;""")
+                        data = c.fetchall()
+                        if not data == None:
+                            data_dt = []; data_bal = [];
+                            for dt, bal in data:
+                                data_dt.append(dt)
+                                data_bal.append(bal)
+                            #graph
+                            fig    = Figure()
+                            canvas = FigureCanvas(fig)
+                            ax = fig.add_subplot(111)
+                            fig.autofmt_xdate(bottom=0.2, rotation=30, ha='right')
+                            ax.set_xlabel('Time', fontsize=10)
+                            ax.set_ylabel('BTC', fontsize=10)
+                            ax.plot(data_dt, data_bal, '-', color='r', label='balance')
+                            #legend
+                            handles, labels = ax.get_legend_handles_labels()
+                            ax.legend(handles, labels, loc=2)
+                            ax.grid(True)
+                            #re-write files
+                            if os.path.exists(graph_fn):
+                                    os.unlink(graph_fn)
+                            canvas.print_figure(graph_fn)
+                            
                     
                     #read command line
                     #while sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
@@ -517,7 +596,7 @@ class JustDiceBet():
                                         self.safe_balance = 0.0
                                         l = "resetting safe_perc, new value from now on: %s%%" % (sp,)
                                         print l
-                                        logging.info(l)
+                                        logger.info(l)
                                 except ValueError:
                                     print "command '%s' failed, keeping old safe_perc" % (cmd,)
                             else: #get
@@ -534,7 +613,7 @@ class JustDiceBet():
                                             self.lose_rounds = r
                                             l = "setting lose_rounds to: %s" % (r,)
                                             print l
-                                            logging.info(l)
+                                            logger.info(l)
                                     except ValueError:
                                         print "command '%s' failed, keeping old lose_rounds" % (cmd,)
                             else: #get
@@ -649,7 +728,7 @@ class JustDiceBet():
             bet_sim = bet_sim*multi
             bets_infos += "%s - " % ("%+.12f" % bet_sim,)
         bets_infos += "LOSE."
-        logging.debug(bets_infos)
+        logger.debug(bets_infos)
         return bet
     
     def setUp(self):
@@ -682,15 +761,15 @@ class JustDiceBet():
         return success
         
     def get_rounded_bet(self, bet, chance):
-        if self.debug_issue_21: logging.info( 'issue21: chance=%s' % (chance,) )
+        if self.debug_issue_21: logger.info( 'issue21: chance=%s' % (chance,) )
         bet_base = math.ceil( (99.0/chance-1) *100)/100
-        if self.debug_issue_21: logging.info( 'issue21: bet=%s, bet_base=%s' % (bet,bet_base,) )
+        if self.debug_issue_21: logger.info( 'issue21: bet=%s, bet_base=%s' % (bet,bet_base,) )
         satoshi = bet/1e-08
         satoshi_rest = satoshi % bet_base
         if satoshi_rest: #we have a rest
-            satoshi = satoshi - satoshi_rest + bet_base
+            satoshi = math.ceil( satoshi - satoshi_rest + bet_base )
         rounded_bet = satoshi*1e-08
-        if self.debug_issue_21: logging.info( 'issue21: rounded_bet=%s' % (rounded_bet,) )
+        if self.debug_issue_21: logger.info( 'issue21: rounded_bet=%s' % (rounded_bet,) )
         return rounded_bet
     
     def get_chance(self, r):
