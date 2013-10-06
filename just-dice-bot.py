@@ -286,7 +286,7 @@ class Simulate_impl():
         if num < chance:
             #win
             payout_perc = 99.0/chance   #1% house edge
-            saldo = bet*payout_perc
+            saldo = bet*(payout_perc-1)
         else:
             #lose
             pass #already payed
