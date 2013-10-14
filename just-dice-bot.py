@@ -35,6 +35,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import NoSuchElementException
 import time, re, math
+from decimal import Decimal
 from datetime import datetime, timedelta
 import random
 import traceback
@@ -103,7 +104,7 @@ class JustDice_impl():
                 """
         
         self.driver = webdriver.Firefox()
-        self.driver.implicitly_wait(15)
+        self.driver.implicitly_wait(30)
         self.base_url = "https://just-dice.com"
         
     def do_login(self):
@@ -114,11 +115,13 @@ class JustDice_impl():
                 self.driver.find_element_by_css_selector("a.fancybox-item.fancybox-close").click()
             except: pass
             # login
+            #time.sleep(3)
             self.driver.find_element_by_link_text("Account").click()
             self.driver.find_element_by_id("myuser").clear()
             self.driver.find_element_by_id("myuser").send_keys(self.user)
             self.driver.find_element_by_id("mypass").clear()
             self.driver.find_element_by_id("mypass").send_keys(self.password)
+            #time.sleep(1)
             self.driver.find_element_by_id("myok").click()
             # get balance, login is OK when balance >= 0.00000001
             self.balance = self.get_balance()
@@ -144,7 +147,7 @@ class JustDice_impl():
         #timeout
         raise Exception('null balance, login error or selenium down')
         
-    def do_bet(self, chance, bet):
+    def do_bet(self, chance, bet, bet_hi):
         while True: #try again if something fails
             try:
                 # bet: chance to win
@@ -188,11 +191,18 @@ class JustDice_impl():
                 self.ddos_last = datetime.utcnow()
                 
                 # BET: roll high or low on random
-                if random.randint(0,1):
+                if bet_hi:
                     hi_lo = "a_hi"
                 else:
                     hi_lo = "a_lo"
+                #check bet size before betting (#28 someone was typing some wrong value):
+                if self.driver.find_element_by_id("pct_chance").get_attribute("value") != ("%4.2f" % chance):
+                    raise Exception("canceling bet, chance value has changed")
+                if self.driver.find_element_by_id("pct_bet").get_attribute("value") != ("%10.8f" % bet):
+                    raise Exception("canceling bet, bet value has changed")
+                #BET BET BET
                 self.driver.find_element_by_id(hi_lo).click()
+                
                 # compare balance (timeout 10s)
                 for i in range(200):
                     new_balance = self.get_balance()
@@ -238,6 +248,22 @@ class JustDice_impl():
             self.display.stop()
     
     def reconnect(self, err='timeout'):
+        title = "No page title available"
+        try:
+            title = self.driver.title
+        except: pass
+        
+        print 'reconnecting (trying fast method) T: %s E: %s' % (title, err,)
+        logger.error( 'reconnect (fast) T: %s E: %s' % (title, err,) )
+        
+        try:
+            self.driver.get(self.base_url + "/")
+            self.driver.find_element_by_link_text("My Bets").click()
+            time.sleep(2)
+            return True
+        except Exception as e:
+            self.reconnect_slow(err)
+    def reconnect_slow(self, err='timeout'):
         while True:
             print "reconnecting (be patient)"
             logger.error( 'reconnect %s' % (err,) )
@@ -274,7 +300,7 @@ class Simulate_impl():
     def get_balance(self):
         return self.balance 
     
-    def do_bet(self, chance, bet):
+    def do_bet(self, chance, bet, bet_hi):
         #small gap for inputs, we do a minimum sleep every 10 bets
         self.__bets += 1
         if self.__bets % 100 == 0:
@@ -282,6 +308,7 @@ class Simulate_impl():
         #bet simulation
         saldo = -bet
         num = random.random()*(100+self.__luck)  #by x% unlucky
+        #TODO: Simulate with hi/lo logic (bet_hi)
         #we always bet low
         if num < chance:
             #win
@@ -343,6 +370,10 @@ class JustDiceBet():
         self.min_bet = self.get_conf_float('min_bet', 1e-8)
         self.simulate = self.get_conf_int("simulate", -1)
         self.simulate_showevery = 1
+        self.wait_loses = self.get_conf_int("wait_loses", 0)
+        self.wait_chance= self.get_conf_float("wait_chance", 50.0)
+        self.wait_bet   = self.get_conf_float("wait_bet", 1e-08)
+        self.hi_lo      = self.get_conf("hi_lo", 'random')
         
         #luck %
         luck_estim = 0.0    #counting all luck we should have 
@@ -412,6 +443,7 @@ class JustDiceBet():
         lost_sum = 0.0
         lost_rows = 0
         self.show_funds_warning = True
+        self.loses_waited = 0
         
         #simulating?
         if self.simulate==-1:
@@ -452,6 +484,9 @@ class JustDiceBet():
         self.setUp()
         print "Login (still be patient) ..."
         self.do_login()
+        #empty stdin buffer
+        for cmd in get_stdin():
+            pass
         self.help()
         
         config_no_credentials = jdb_config
@@ -475,9 +510,15 @@ class JustDiceBet():
             try:
                 warn = ''
                 #prepare bet
-                chance = self.get_chance(lost_rows)
-                self.betcount += 1
-                bet = self.get_rounded_bet(bet, chance)
+                if self.loses_waited < self.wait_loses:
+                    #waiting bet
+                    chance = self.wait_chance
+                    self.betcount += 1
+                    bet = self.wait_bet
+                else:
+                    chance = self.get_chance(lost_rows)
+                    self.betcount += 1
+                    bet = self.get_rounded_bet(bet, chance)
                 #are we below safe-balance? STOP
                 if self.balance < self.safe_balance:
                     print "STOPPING, we would get below safe percentage in this round!"
@@ -487,8 +528,18 @@ class JustDiceBet():
                                   "%+.8f" % self.safe_balance)
                     self.run = False
                 else:
+                    #hi/lo strategy
+                    if   self.hi_lo == 'random':
+                        bet_hi = random.randint(0,1)
+                    elif self.hi_lo == 'always_hi':
+                        bet_hi = True
+                    elif self.hi_lo == 'always_lo':
+                        bet_hi = False
+                    else:
+                        raise Exception("hi_lo config option isn't implemented")
+                    
                     #BET BET BET
-                    saldo = self.do_bet(chance=chance, bet=bet)
+                    saldo = self.do_bet(chance=chance, bet=bet, bet_hi=bet_hi)
                     #luck stats estimate
                     luck_estim += chance
                     if saldo > 0.0:
@@ -500,19 +551,31 @@ class JustDiceBet():
                         lost_rows = 0
                         #luck stats - won
                         luck_lucky += 100.0
-                    else:
-                        #lose, multiplyer for next round:
-                        multi = self.get_multiplyer(lost_rows)
-                        if multi == 'lose':
-                            warn += ", we lose"
-                            bet = self.get_max_bet()
-                            lost_rows = 0
-                        else:
-                            bet = bet*multi
-                            #next rounds vars
-                            lost_rows += 1
-                            lost_sum += saldo
                         
+                        #reset waited lost bets:
+                        self.loses_waited = 0
+                    else:
+                        #lose:
+                        
+                        #are we waiting for lost bets?
+                        if self.loses_waited < self.wait_loses:
+                            self.loses_waited += 1
+                            if self.loses_waited >= self.wait_loses:
+                                bet = self.get_max_bet()
+                                lost_rows = 0
+                        else:
+                            #lose, multiplyer for next round:
+                            multi = self.get_multiplyer(lost_rows)
+                            if multi == 'lose':
+                                warn += ", we lose"
+                                bet = self.get_max_bet()
+                                lost_rows = 0
+                            else:
+                                bet = bet*multi
+                                #next rounds vars
+                                lost_rows += 1
+                                lost_sum += saldo
+                    
                     #add win/lose:
                     self.total += saldo
                     #warnings:
@@ -761,15 +824,18 @@ class JustDiceBet():
     
     def do_login(self):
         self.remote_impl.do_login()
-        self.balance = self.remote_impl.balance
+        try:
+            self.balance = self.remote_impl.balance
+        except AttributeError: # just in case balance isn't read
+            self.balance = 0.0
     
     def get_balance(self):
         balance = self.remote_impl.get_balance()
         return balance
         
-    def do_bet(self, chance, bet):
+    def do_bet(self, chance, bet, bet_hi):
         self.remote_impl.slow_bet = self.slow_bet
-        saldo = self.remote_impl.do_bet(chance, bet)
+        saldo = self.remote_impl.do_bet(chance, bet, bet_hi)
         self.balance = self.remote_impl.balance
         self.starttime = self.starttime - self.remote_impl.fake_starttime
         return saldo
@@ -786,6 +852,7 @@ class JustDiceBet():
         return success
         
     def get_rounded_bet(self, bet, chance):
+        """
         if self.debug_issue_21: logger.info( 'issue21: chance=%s' % (chance,) )
         bet_base = math.ceil( (99.0/chance-1) *100)/100
         if self.debug_issue_21: logger.info( 'issue21: bet=%s, bet_base=%s' % (bet,bet_base,) )
@@ -796,6 +863,20 @@ class JustDiceBet():
         rounded_bet = satoshi*1e-08
         if self.debug_issue_21: logger.info( 'issue21: rounded_bet=%s' % (rounded_bet,) )
         return rounded_bet
+        """
+        bet_satoshi = Decimal(str(bet))/Decimal("1e-08")
+        chance = Decimal(str(chance))
+        
+        payout = Decimal("99.0")/chance
+        payout_exactness = payout - Decimal( math.floor(payout) )
+        if payout_exactness == Decimal("0"):
+            #no rounding necessary
+            return bet
+        else:
+            satoshi_multi = Decimal(1)/payout_exactness
+            round_up_by = satoshi_multi - (bet_satoshi % satoshi_multi)
+            bet_satoshi_rounded = bet_satoshi + round_up_by
+            return float( bet_satoshi_rounded*Decimal("1e-08") )
     
     def get_chance(self, r):
         #we may have a list of round numbers:
