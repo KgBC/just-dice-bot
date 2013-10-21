@@ -162,9 +162,11 @@ class JustDice_impl():
                     #if select.select([sys.stdin], [], [], 10)[0]:
                     #    cmd = sys.stdin.readline()
                     for x in range(0,10):
-                        if get_stdin():
-                            #we continue
+                        try: 
+                            get_stdin().next()
                             break
+                        except StopIteration:
+                            pass
                         time.sleep(1)
                 # sleep before bet: https://github.com/KgBC/just-dice-bot/issues/26
                 if bet <= 9e-08:
@@ -217,7 +219,7 @@ class JustDice_impl():
                 self.reconnect(e)
     
     def do_autotip(self, tip):
-        while True:
+        while True: #retry on error (just in case someone closed the browser)
             try:
                 self.driver.find_element_by_id("a_withdraw").click()
                 self.driver.find_element_by_id("wd_address").clear()
@@ -225,6 +227,7 @@ class JustDice_impl():
                 self.driver.find_element_by_id("wd_amount").clear()
                 self.driver.find_element_by_id("wd_amount").send_keys("%s" % ("%0.8f" % tip,) )
                 self.driver.find_element_by_id("wd_button").click()
+                break #we tipped (if there was no error on the site)
             except Exception as e:
                 self.reconnect(e)
         time.sleep(2)
@@ -248,7 +251,7 @@ class JustDice_impl():
             self.display.stop()
     
     def reconnect(self, err='timeout'):
-        title = "No page title available"
+        """title = "No page title available"
         try:
             title = self.driver.title
         except: pass
@@ -264,6 +267,7 @@ class JustDice_impl():
         except Exception as e:
             self.reconnect_slow(err)
     def reconnect_slow(self, err='timeout'):
+        """
         while True:
             print "reconnecting (be patient)"
             logger.error( 'reconnect %s' % (err,) )
@@ -321,8 +325,8 @@ class Simulate_impl():
         return saldo
     
     def do_autotip(self, tip):
-        print "*** no auto-tip in simulation ***"
-        return ""
+        print "***** no auto-tip in simulation, simulating successful auto-tip *****"
+        return "1CDjWb7zupTfQihc6sMeDvPmUHkfeMhC83"
     
     def tearDown(self):
         pass
@@ -444,6 +448,8 @@ class JustDiceBet():
         lost_rows = 0
         self.show_funds_warning = True
         self.loses_waited = 0
+        saldo = 0.0
+        self.bet_hi = random.randint(0,1) #random start needed for some hi/lo-modes
         
         #simulating?
         if self.simulate==-1:
@@ -454,7 +460,7 @@ class JustDiceBet():
             banner = " playing on just-dice.com with real btc "
         else:
             log_fn = "bets-simulating.log"
-            graph_fn = "bets-simulated.png"
+            graph_fn = "bets-simulating.png"
             self.remote_impl = Simulate_impl( luck=self.simulate )
             banner = " fast, random simulating with 100btc (like %) "
         print
@@ -520,7 +526,7 @@ class JustDiceBet():
                     self.betcount += 1
                     bet = self.get_rounded_bet(bet, chance)
                 #are we below safe-balance? STOP
-                if self.balance < self.safe_balance:
+                if (self.balance - bet) < self.safe_balance:
                     print "STOPPING, we would get below safe percentage in this round!"
                     print "safe_perc: %s%%, balance: %s, safe balance: %s" % (
                                   self.safe_perc, 
@@ -530,16 +536,19 @@ class JustDiceBet():
                 else:
                     #hi/lo strategy
                     if   self.hi_lo == 'random':
-                        bet_hi = random.randint(0,1)
+                        self.bet_hi = random.randint(0,1)
                     elif self.hi_lo == 'always_hi':
-                        bet_hi = True
+                        self.bet_hi = True
                     elif self.hi_lo == 'always_lo':
-                        bet_hi = False
+                        self.bet_hi = False
+                    elif self.hi_lo == 'switch_on_win':
+                        if saldo > 0.0:
+                            self.bet_hi = not self.bet_hi
                     else:
                         raise Exception("hi_lo config option isn't implemented")
                     
                     #BET BET BET
-                    saldo = self.do_bet(chance=chance, bet=bet, bet_hi=bet_hi)
+                    saldo = self.do_bet(chance=chance, bet=bet, bet_hi=self.bet_hi)
                     #luck stats estimate
                     luck_estim += chance
                     if saldo > 0.0:
@@ -608,13 +617,14 @@ class JustDiceBet():
                             VALUES (?, ?);
                         """, (now, self.balance) )
                     
-                    bet_info = "%s%%luck round%s|B%s/%s: %s %s (%s%%) = %s total. session: %s (%s(%s%%)/d)%s" % (
+                    bet_info = "%s%%luck round%s|B%s/%s: %s%s %s (%s%%) = %s total. session: %s (%s(%s%%)/d)%s" % (
                                        "%+6.1f" % (luck_lucky/luck_estim*100-100),
                                        "%3i"     % lost_rows,
                                        "%6i"     % self.betcount,
                                        str(difftime).split('.')[0],
                                        "%+.8f"   % saldo, 
-                                       "WIN " if (saldo>=0) else "LOSE",
+                                       "-h" if (self.bet_hi) else "-l",
+                                       "+++" if (saldo>=0) else "---",
                                        "%04.1f"  % chance,
                                        "%0.8f"   % self.balance,
                                        "%+.8f"   % self.total,
@@ -634,7 +644,7 @@ class JustDiceBet():
                         
                     #graphing
                     if self.simulate == -1:
-                        graph_every = 10 #not simulating, every 10 bets
+                        graph_every = 1 #not simulating, every bet
                     else:
                         graph_every = 1000
                     
@@ -739,16 +749,20 @@ class JustDiceBet():
                 print "You are using auto-tip feature, thanks. I would tip %s to the developer." % (
                            "%+.8f" % tip )
                 s = 10
+                for cmd in get_stdin(): #empty stdin
+                    pass
                 print "If you want to cancel the tip, press Enter in next %ss. Also read documentation on auto-tip." % (s,)
-                
-                #while 
-                #if sys.stdin in select.select([sys.stdin], [], [], s)[0]:
                 cancel = False
                 for x in range(0,s):
-                    if get_stdin():
+                    try: 
+                        get_stdin().next()
                         cancel = True
+                        break
+                    except StopIteration:
+                        pass
+                    time.sleep(1)
                 if cancel:
-                    cmd = sys.stdin.readline().rstrip('\n')
+                    #cmd = sys.stdin.readline().rstrip('\n')
                     print "You decided to cancel my tip. You could also help the project by recommending it somewhere!\nShare this link: https://github.com/KgBC/just-dice-bot"
                 else:
                     print "Starting auto-tip ..."
@@ -757,7 +771,7 @@ class JustDiceBet():
                         print "You auto-tip'ed. Thanks for your support! king regards, KgBC https://github.com/KgBC/just-dice-bot"
                     else:
                         print "Auto-tip failed, \nError from just-dice: %s\nPlease tip manually: 1CDjWb7zupTfQihc6sMeDvPmUHkfeMhC83" % (
-                                       err,)
+                                       ret,)
         else:
             print "You lost %s since %s (this session)\nYou know, it's betting, so losing is normal.\nYou may want to take less risk, see README: https://github.com/KgBC/just-dice-bot \nIf settings are unclear just file an issue on GitHub. I'll help. Thanks." % (
                        "%+.8f" % self.total, 
@@ -801,9 +815,11 @@ class JustDiceBet():
                 print "    * ignore from now on and play it anyway:     ENTER"
                 print "    * stop playing (and change system or funds): CTRL+C"
                 while True:
-                    if get_stdin():
-                        #we continue
+                    try: 
+                        get_stdin().next()
                         break
+                    except StopIteration:
+                        pass
                     time.sleep(1)
             self.show_funds_warning = False #ignore
             bets_infos += "roundup from %s to " % (
